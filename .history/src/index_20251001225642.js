@@ -37,6 +37,4 @@ mongoose.connect(process.env.MONGO_DB)
 // Run server
 app.listen(port, () => {
   console.log(`🚀 Server is running on port ${port}`);
-  console.log("STRIPE_SECRET_KEY loaded:", !!process.env.STRIPE_SECRET_KEY);
-
 });
