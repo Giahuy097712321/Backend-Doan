@@ -26,10 +26,7 @@ const allowedOrigins = [
 // CORS cho Express
 app.use(cors({
   origin: function (origin, callback) {
-    // Cho phép requests không có origin (như Postman, mobile apps, server-side requests)
     if (!origin) return callback(null, true);
-
-    // Kiểm tra origin có trong danh sách allowed không
     if (allowedOrigins.some(allowedOrigin =>
       origin === allowedOrigin ||
       origin.startsWith(allowedOrigin.replace('https://', 'http://')) ||
@@ -37,16 +34,18 @@ app.use(cors({
     )) {
       return callback(null, true);
     }
-
     const msg = `CORS policy: Origin ${origin} not allowed`;
     console.warn('⚠️ CORS blocked:', msg);
     return callback(new Error(msg), false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'token']
-
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'token'],
+  exposedHeaders: ['token'], // 👈 cho phép client đọc header này
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 }));
+
 
 // CORS cho Socket.io
 const io = new Server(server, {
