@@ -1,27 +1,49 @@
 const Order = require("../models/OrderProduct");
 const Product = require("../models/ProductModel");
 const EmailService = require("./EmailService");
+
 const createOrder = (newOrder) => {
     return new Promise(async (resolve, reject) => {
-        const {
-            orderItems,
-            paymentMethod,
-            itemsPrice,
-            shippingPrice,
-            totalPrice,
-            fullName,
-            address,
-            city,
-            phone,
-            user,
-            delivery,
-            discount = 0,
-            country,
-            taxPrice = 0,
-            email
-        } = newOrder;
-
         try {
+            console.log("🛒 Bắt đầu tạo đơn hàng với dữ liệu:", {
+                email: newOrder.email,
+                fullName: newOrder.fullName,
+                orderItemsCount: newOrder.orderItems?.length
+            });
+
+            const {
+                orderItems,
+                paymentMethod,
+                itemsPrice,
+                shippingPrice,
+                totalPrice,
+                fullName,
+                address,
+                city,
+                phone,
+                user,
+                delivery,
+                discount = 0,
+                country,
+                taxPrice = 0,
+                email
+            } = newOrder;
+
+            // ✅ VALIDATION DỮ LIỆU ĐẦU VÀO
+            if (!orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
+                return resolve({
+                    status: "ERR",
+                    message: "Danh sách sản phẩm không hợp lệ",
+                });
+            }
+
+            if (!email) {
+                return resolve({
+                    status: "ERR",
+                    message: "Email là bắt buộc",
+                });
+            }
+
             // ✅ Bước 1: Kiểm tra tồn kho cho tất cả sản phẩm
             for (const item of orderItems) {
                 const product = await Product.findById(item.product);
@@ -69,7 +91,51 @@ const createOrder = (newOrder) => {
                     message: "Không thể tạo đơn hàng",
                 });
             }
-            await EmailService.sendEmailCreateOrder(email, orderItems);
+
+            console.log("✅ Đơn hàng đã được tạo:", createdOrder._id);
+
+            // ✅ Bước 4: Chuẩn bị dữ liệu email ĐẦY ĐỦ
+            const orderInfo = {
+                orderCode: createdOrder._id.toString(),
+                fullName: fullName || 'Khách hàng',
+                phone: phone || 'Chưa có',
+                address: address || 'Chưa có',
+                city: city || 'Chưa có',
+                country: country || 'Chưa có',
+                paymentMethod: paymentMethod || 'Chưa xác định',
+                delivery: delivery || 'Chưa xác định',
+                itemsPrice: itemsPrice || 0,
+                shippingPrice: shippingPrice || 0,
+                totalPrice: totalPrice || 0,
+                taxPrice: taxPrice || 0,
+                discount: discount || 0,
+                email: email,
+                isPaid: false
+            };
+
+            console.log("📧 Chuẩn bị gửi email với orderInfo:", orderInfo);
+
+            // ✅ Bước 5: Gửi email với error handling
+            if (email) {
+                try {
+                    const emailResult = await EmailService.sendEmailCreateOrder(
+                        email,
+                        orderItems,
+                        orderInfo
+                    );
+
+                    if (emailResult.success) {
+                        console.log("✅ Email đã được gửi thành công");
+                    } else {
+                        console.warn("⚠️ Gửi email thất bại:", emailResult.error);
+                        // KHÔNG reject order vì lỗi email, chỉ log cảnh báo
+                    }
+                } catch (emailError) {
+                    console.error("❌ Lỗi trong quá trình gửi email:", emailError);
+                    // KHÔNG reject order vì lỗi email
+                }
+            }
+
             resolve({
                 status: "OK",
                 message: "Tạo đơn hàng thành công",
@@ -83,6 +149,7 @@ const createOrder = (newOrder) => {
     });
 };
 
+// ... các hàm khác giữ nguyên
 const getAllOrderDetails = async (userId) => {
     try {
         if (!userId) {
@@ -124,7 +191,6 @@ const getDetailsOrder = (id) => {
         try {
             const order = await Order.findById(id).populate('orderItems.product')
 
-
             if (!order) {
                 return resolve({
                     status: 'ERR',
@@ -142,6 +208,7 @@ const getDetailsOrder = (id) => {
         }
     });
 };
+
 const cancelOrder = (id, data) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -178,6 +245,7 @@ const cancelOrder = (id, data) => {
         }
     });
 };
+
 const getAllOrder = () => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -194,8 +262,6 @@ const getAllOrder = () => {
         }
     });
 };
-
-
 
 const updateOrder = async (orderId, data) => {
     try {
@@ -250,7 +316,6 @@ const updateOrder = async (orderId, data) => {
         };
     }
 };
-
 
 module.exports = {
     createOrder, getAllOrderDetails,
