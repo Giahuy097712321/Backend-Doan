@@ -16,23 +16,40 @@ const app = express();
 const server = createServer(app);
 const port = process.env.PORT || 3001;
 
-// ✅ CORS config linh hoạt cho cả localhost và production
+// ✅ CORS config FIXED - Linh hoạt cho tất cả Vercel domains
 const allowedOrigins = [
   'http://localhost:3000',
   'https://fontend-doan.vercel.app',
-  'https://fontend-doan-git-main-huys-projects-c7d34491.vercel.app/',
-  process.env.FRONTEND_URL // Thêm biến môi trường cho frontend URL
-].filter(Boolean); // Loại bỏ các giá trị undefined
+  'https://fontend-doan-git-main-huys-projects-c7d34491.vercel.app',
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
-// CORS cho Express
+// Hàm kiểm tra origin FIXED
+const checkOrigin = (origin) => {
+  if (!origin) return true;
+
+  // Kiểm tra trong allowedOrigins
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  // Kiểm tra tất cả Vercel domains
+  if (origin.endsWith('.vercel.app') || origin.endsWith('.now.sh')) {
+    return true;
+  }
+
+  // Cho phép localhost trong development
+  if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
+    return true;
+  }
+
+  return false;
+};
+
+// CORS cho Express - FIXED
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.some(allowedOrigin =>
-      origin === allowedOrigin ||
-      origin.startsWith(allowedOrigin.replace('https://', 'http://')) ||
-      (process.env.NODE_ENV === 'development' && origin.includes('localhost'))
-    )) {
+    if (checkOrigin(origin)) {
       return callback(null, true);
     }
     const msg = `CORS policy: Origin ${origin} not allowed`;
@@ -42,29 +59,25 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'token'],
-  exposedHeaders: ['token'], // 👈 cho phép client đọc header này
+  exposedHeaders: ['token'],
   preflightContinue: false,
   optionsSuccessStatus: 200
 }));
 
-
-// CORS cho Socket.io
+// CORS cho Socket.io - FIXED
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.some(allowedOrigin =>
-        origin === allowedOrigin ||
-        (process.env.NODE_ENV === 'development' && origin.includes('localhost'))
-      )) {
+      if (checkOrigin(origin)) {
         return callback(null, true);
       }
+      console.warn('⚠️ Socket.io CORS blocked:', origin);
       return callback(new Error('Not allowed by CORS'), false);
     },
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['websocket', 'polling'] // Hỗ trợ cả hai loại transport
+  transports: ['websocket', 'polling']
 });
 
 // Middleware
@@ -72,13 +85,20 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser());
 
-// Health check endpoint
+// Health check endpoint - THÊM CORS MANUAL
 app.get('/health', (req, res) => {
+  const origin = req.headers.origin;
+  if (checkOrigin(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+
   res.status(200).json({
     status: 'OK',
     message: 'Server is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    allowedOrigins: allowedOrigins
   });
 });
 
@@ -324,6 +344,7 @@ server.listen(port, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`💬 Socket.io is ready for connections`);
   console.log(`✅ Allowed origins:`, allowedOrigins);
+  console.log(`🌐 Vercel domains: *.vercel.app, *.now.sh`);
 });
 
 module.exports = { app, io, server };
