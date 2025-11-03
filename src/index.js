@@ -16,7 +16,7 @@ const app = express();
 const server = createServer(app);
 const port = process.env.PORT || 3001;
 
-// ✅ CORS config FIXED - Linh hoạt cho tất cả Vercel domains
+// server.js - COMPREHENSIVE CORS SOLUTION
 const allowedOrigins = [
   'http://localhost:3000',
   'https://fontend-doan.vercel.app',
@@ -24,27 +24,50 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
-// Hàm kiểm tra origin FIXED
+// Thêm các patterns Vercel phổ biến
+const vercelPatterns = [
+  /https:\/\/.*\.vercel\.app$/,
+  /https:\/\/.*-git-.*\.vercel\.app$/,
+  /https:\/\/.*-.*-.*\.vercel\.app$/,
+  /https:\/\/.*-huys-projects-.*\.vercel\.app$/
+];
+
 const checkOrigin = (origin) => {
   if (!origin) return true;
 
-  // Kiểm tra trong allowedOrigins
+  console.log('🔍 Checking origin:', origin);
+
+  // Kiểm tra exact match
   if (allowedOrigins.includes(origin)) {
+    console.log('✅ Exact match');
     return true;
   }
 
-  // Kiểm tra tất cả Vercel domains
+  // Kiểm tra Vercel patterns
+  for (const pattern of vercelPatterns) {
+    if (pattern.test(origin)) {
+      console.log('✅ Vercel pattern match:', pattern);
+      return true;
+    }
+  }
+
+  // Kiểm tra domain suffixes
   if (origin.endsWith('.vercel.app') || origin.endsWith('.now.sh')) {
+    console.log('✅ Domain suffix match');
     return true;
   }
 
-  // Cho phép localhost trong development
+  // Development
   if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
+    console.log('✅ Development localhost');
     return true;
   }
 
+  console.log('❌ No match found');
   return false;
 };
+
+// CORS config giữ nguyên...
 
 // CORS cho Express - FIXED
 app.use(cors({
