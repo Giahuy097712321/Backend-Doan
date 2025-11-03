@@ -20,6 +20,7 @@ const port = process.env.PORT || 3001;
 const allowedOrigins = [
   'http://localhost:3000',
   'https://fontend-doan.vercel.app',
+  'https://fontend-doan-git-main-huys-projects-c7d34491.vercel.app/',
   process.env.FRONTEND_URL // Thêm biến môi trường cho frontend URL
 ].filter(Boolean); // Loại bỏ các giá trị undefined
 
