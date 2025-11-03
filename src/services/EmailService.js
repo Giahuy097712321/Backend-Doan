@@ -2,30 +2,6 @@ const SibApiV3Sdk = require('@sendinblue/client');
 const dotenv = require("dotenv");
 dotenv.config();
 
-// Hàm xử lý đường dẫn hình ảnh
-const processImageUrl = (imagePath) => {
-  if (!imagePath) return null;
-
-  // Nếu đã là URL đầy đủ
-  if (imagePath.startsWith('http')) {
-    return imagePath;
-  }
-
-  // Nếu là đường dẫn tương đối từ frontend
-  if (imagePath.startsWith('/') || imagePath.startsWith('./') || imagePath.startsWith('../')) {
-    // Xử lý đường dẫn tương đối thành URL đầy đủ
-    const cleanPath = imagePath.replace(/^\.?\//, '');
-    return `https://fontend-doan.vercel.app/${cleanPath}`;
-  }
-
-  // Nếu chỉ là tên file
-  if (imagePath.includes('.') && !imagePath.includes('/')) {
-    return `https://fontend-doan.vercel.app/images/${imagePath}`;
-  }
-
-  return `https://fontend-doan.vercel.app/${imagePath}`;
-};
-
 const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
   try {
     // ✅ VALIDATION CHẶT CHẼ
@@ -60,20 +36,8 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     let totalDiscount = 0;
     let htmlRows = "";
 
-    // Debug hình ảnh
-    console.log("🖼️ Debug hình ảnh sản phẩm:");
+    // Xử lý từng sản phẩm với base64 images
     orderItems.forEach((item, index) => {
-      const processedImage = processImageUrl(item.image);
-      console.log(`Sản phẩm ${index + 1}:`, {
-        name: item.name,
-        originalImage: item.image,
-        processedImage: processedImage,
-        isHttp: processedImage ? processedImage.startsWith('http') : false
-      });
-    });
-
-    // Xử lý từng sản phẩm
-    orderItems.forEach((item) => {
       const itemPrice = Number(item.price) || 0;
       const itemAmount = Number(item.amount) || 0;
       const itemDiscount = Number(item.discount) || 0;
@@ -85,18 +49,37 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
       subtotal += itemTotal;
       totalDiscount += itemDiscountAmount;
 
-      // Xử lý hình ảnh
-      const imageUrl = processImageUrl(item.image);
+      // Xử lý hình ảnh base64
+      let imageHtml = '<div style="width:60px; height:60px; background:#f0f0f0; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:20px;">📦</div>';
+
+      if (item.image) {
+        let base64Image = item.image;
+
+        // Xử lý base64 image - giống code cũ của bạn
+        if (base64Image.startsWith("data:image")) {
+          base64Image = base64Image.split(",")[1];
+        }
+
+        if (base64Image && base64Image.length > 100) {
+          // Tạo CID (Content ID) cho hình ảnh
+          const imageCid = `product-image-${index}-${Date.now()}`;
+
+          // Sử dụng base64 trực tiếp trong src
+          const mimeType = item.image.startsWith('data:image/png') ? 'png' :
+            item.image.startsWith('data:image/jpeg') ? 'jpeg' :
+              item.image.startsWith('data:image/jpg') ? 'jpg' : 'png';
+
+          imageHtml = `<img src="data:image/${mimeType};base64,${base64Image}" 
+                         alt="${item.name || 'Sản phẩm'}" 
+                         style="width:60px; height:60px; object-fit:cover; border-radius:5px; border:1px solid #ddd;"
+                         onerror="this.style.display='none'; this.parentNode.innerHTML='📦'" />`;
+        }
+      }
 
       htmlRows += `
         <tr>
           <td style="padding:12px; border:1px solid #ddd; text-align:center;">
-            ${imageUrl ?
-          `<img src="${imageUrl}" alt="${item.name || 'Sản phẩm'}" 
-                style="width:60px; height:60px; object-fit:cover; border-radius:5px; border:1px solid #ddd;"
-                onerror="this.style.display='none'; this.parentNode.innerHTML='📦'" />`
-          : '<div style="width:60px; height:60px; background:#f0f0f0; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:20px;">📦</div>'
-        }
+            ${imageHtml}
           </td>
           <td style="padding:12px; border:1px solid #ddd;">
             <strong>${item.name || 'Sản phẩm'}</strong>
@@ -129,7 +112,7 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     const taxPrice = Number(orderInfo.taxPrice) || 0;
     const finalTotalAmount = totalAmount || (subtotal - totalDiscount + shippingFee + taxPrice);
 
-    // Tạo HTML content đẹp như template của bạn
+    // Tạo HTML content
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -149,6 +132,10 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
             }
             .mobile-hidden {
               display: none !important;
+            }
+            img {
+              max-width: 50px !important;
+              height: auto !important;
             }
           }
         </style>
@@ -276,6 +263,7 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     console.log("📧 Đang gửi email đến:", email);
     console.log("📦 Mã đơn hàng:", orderCode);
     console.log("💰 Tổng tiền:", finalTotalAmount.toLocaleString('vi-VN') + '₫');
+    console.log("🖼️ Số lượng sản phẩm có ảnh:", orderItems.filter(item => item.image).length);
 
     const response = await client.sendTransacEmail({
       sender: { email: 'trangiahuy04092018@gmail.com', name: 'GH Electric' },
