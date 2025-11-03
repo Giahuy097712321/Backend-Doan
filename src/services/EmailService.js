@@ -35,7 +35,6 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     let subtotal = 0;
     let totalDiscount = 0;
     let htmlRows = "";
-    let attachments = [];
 
     // Xử lý từng sản phẩm
     orderItems.forEach((item, index) => {
@@ -50,54 +49,34 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
       subtotal += itemTotal;
       totalDiscount += itemDiscountAmount;
 
-      // Xử lý hình ảnh với CID
+      // Xử lý hình ảnh - DÙNG BASE64 TRỰC TIẾP TRONG HTML
       let imageHtml = '<div style="width:60px; height:60px; background:#f0f0f0; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:20px;">📦</div>';
 
-      if (item.image) {
-        let base64Image = item.image;
+      if (item.image && item.image.startsWith('data:image')) {
+        // Sử dụng base64 trực tiếp trong src
+        imageHtml = `<img src="${item.image}" 
+                       alt="${item.name || 'Sản phẩm'}" 
+                       style="width:60px; height:60px; object-fit:cover; border-radius:5px; border:1px solid #ddd;"
+                       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                     <div style="width:60px; height:60px; background:#f0f0f0; border-radius:5px; display:none; align-items:center; justify-content:center; font-size:20px;">📦</div>`;
 
-        // Xử lý base64 image
-        if (base64Image.startsWith("data:image")) {
-          base64Image = base64Image.split(",")[1];
-        }
-
-        if (base64Image && base64Image.length > 100) {
-          const cid = `product-image-${index}-${Date.now()}`;
-
-          // Xác định content type
-          let contentType = 'image/jpeg';
-          if (item.image.startsWith('data:image/png')) contentType = 'image/png';
-          if (item.image.startsWith('data:image/webp')) contentType = 'image/webp';
-          if (item.image.startsWith('data:image/gif')) contentType = 'image/gif';
-
-          // Thêm vào attachments
-          attachments.push({
-            name: `product-${index}.${contentType.split('/')[1] || 'jpg'}`,
-            content: base64Image,
-            contentType: contentType,
-            cid: cid
-          });
-
-          imageHtml = `<img src="cid:${cid}" alt="${item.name || 'Sản phẩm'}" style="width:60px; height:60px; object-fit:cover; border-radius:5px; border:1px solid #ddd;" />`;
-
-          console.log(`✅ Đã thêm attachment CID: ${cid}`);
-        }
+        console.log(`✅ Đã thêm base64 image cho sản phẩm ${index + 1}`);
       }
 
       htmlRows += `
         <tr>
-          <td style="padding:12px; border:1px solid #ddd; text-align:center;">
+          <td style="padding:12px; border:1px solid #ddd; text-align:center; vertical-align:middle;">
             ${imageHtml}
           </td>
-          <td style="padding:12px; border:1px solid #ddd;">
+          <td style="padding:12px; border:1px solid #ddd; vertical-align:middle;">
             <strong>${item.name || 'Sản phẩm'}</strong>
             ${itemDiscount ? `<br/><span style="color:#e53935; font-size:12px;">🎉 Giảm ${itemDiscount}%</span>` : ''}
           </td>
-          <td style="padding:12px; border:1px solid #ddd; text-align:center;">${itemAmount}</td>
-          <td style="padding:12px; border:1px solid #ddd; text-align:right;">
+          <td style="padding:12px; border:1px solid #ddd; text-align:center; vertical-align:middle;">${itemAmount}</td>
+          <td style="padding:12px; border:1px solid #ddd; text-align:right; vertical-align:middle;">
             ${itemPrice.toLocaleString('vi-VN')}₫
           </td>
-          <td style="padding:12px; border:1px solid #ddd; text-align:right;">
+          <td style="padding:12px; border:1px solid #ddd; text-align:right; vertical-align:middle;">
             ${itemDiscount ? `
               <div style="text-decoration: line-through; color: #999; font-size: 12px;">
                 ${itemTotal.toLocaleString('vi-VN')}₫
@@ -120,7 +99,7 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     const taxPrice = Number(orderInfo.taxPrice) || 0;
     const finalTotalAmount = totalAmount || (subtotal - totalDiscount + shippingFee + taxPrice);
 
-    // Tạo HTML content đẹp như template của bạn
+    // Tạo HTML content với hình ảnh trong bảng
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -128,9 +107,39 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Xác nhận đơn hàng</title>
+        <style>
+          .product-image {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+          }
+          .fallback-image {
+            width: 60px;
+            height: 60px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+          }
+          @media only screen and (max-width: 600px) {
+            .product-image {
+              width: 50px;
+              height: 50px;
+            }
+            .fallback-image {
+              width: 50px;
+              height: 50px;
+            }
+          }
+        </style>
       </head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background: #f5f5f5;">
         <div style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #2c5aa0 0%, #3a6bb0 100%); padding: 30px; text-align: center; color: white;">
             <h1 style="margin:0; font-size: 28px;">🎉 Đơn hàng của bạn đã được tạo thành công!</h1>
@@ -252,22 +261,14 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     console.log("📧 Đang gửi email đến:", email);
     console.log("📦 Mã đơn hàng:", orderCode);
     console.log("💰 Tổng tiền:", finalTotalAmount.toLocaleString('vi-VN') + '₫');
-    console.log("🖼️ Số lượng attachments:", attachments.length);
+    console.log("🖼️ Số lượng sản phẩm có ảnh:", orderItems.filter(item => item.image && item.image.startsWith('data:image')).length);
 
-    // Gửi email với attachments
-    const emailData = {
+    const response = await client.sendTransacEmail({
       sender: { email: 'trangiahuy04092018@gmail.com', name: 'GH Electric' },
       to: [{ email }],
       subject: `🧾 Đơn hàng ${orderCode} - GH Electric`,
       htmlContent: htmlContent,
-    };
-
-    // Chỉ thêm attachment nếu có
-    if (attachments.length > 0) {
-      emailData.attachment = attachments;
-    }
-
-    const response = await client.sendTransacEmail(emailData);
+    });
 
     console.log("✅ Mail sent successfully via Brevo:", response);
     return { success: true, messageId: response.messageId };
