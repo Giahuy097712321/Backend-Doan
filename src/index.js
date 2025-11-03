@@ -81,22 +81,30 @@ const checkOrigin = (origin) => {
 // CORS config giữ nguyên...
 
 // CORS cho Express - FIXED
-app.use(cors({
-  origin: function (origin, callback) {
-    if (checkOrigin(origin)) {
-      return callback(null, true);
-    }
-    const msg = `CORS policy: Origin ${origin} not allowed`;
-    console.warn('⚠️ CORS blocked:', msg);
-    return callback(new Error(msg), false);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'token'],
-  exposedHeaders: ['token'],
-  preflightContinue: false,
-  optionsSuccessStatus: 200
-}));
+// === GLOBAL CORS FALLBACK ===
+// Đảm bảo mọi phản hồi đều có header CORS, kể cả khi bị lỗi.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && checkOrigin(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie, token'
+  );
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+
+  // Đáp ứng nhanh cho preflight request (OPTIONS)
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
 
 // CORS cho Socket.io - FIXED
 const io = new Server(server, {
