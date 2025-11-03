@@ -1,46 +1,34 @@
-const nodemailer = require("nodemailer");
+const SibApiV3Sdk = require('@sendinblue/client');
+const dotenv = require("dotenv");
+dotenv.config();
 
-exports.sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
+const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
+  const client = new SibApiV3Sdk.TransactionalEmailsApi();
+  client.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
+
+  const orderCode = orderInfo.orderCode || `DH${Date.now()}`;
+  const totalAmount = orderInfo.totalPrice || 0;
+
+  const htmlContent = `
+    <h2>Đơn hàng ${orderCode} của bạn đã được tạo!</h2>
+    <p>Tổng tiền: <strong>${totalAmount.toLocaleString('vi-VN')}₫</strong></p>
+    <p>Cảm ơn bạn đã mua sắm tại GH Electric.</p>
+  `;
+
   try {
-    if (!orderInfo) {
-      console.error("❌ sendEmailCreateOrder: orderInfo is undefined");
-      return;
-    }
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+    const response = await client.sendTransacEmail({
+      sender: { email: 'trangiahuy04092018@gmail.com', name: 'GH Electric' },
+      to: [{ email }],
+      subject: `Xác nhận đơn hàng ${orderCode}`,
+      htmlContent: htmlContent,
     });
 
-    // 🧾 Tạo nội dung danh sách sản phẩm
-    const itemsHtml = orderItems.map(item => `
-      <li>${item.name || item.productName} - SL: ${item.amount}</li>
-    `).join("");
-
-    // 📩 Nội dung email
-    const mailOptions = {
-      from: `"Shop Cầu Lông" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: `🛒 Xác nhận đơn hàng #${orderInfo.orderCode}`,
-      html: `
-        <h3>Xin chào ${orderInfo.fullName},</h3>
-        <p>Bạn vừa đặt hàng thành công tại Shop Cầu Lông.</p>
-        <p><b>Mã đơn hàng:</b> ${orderInfo.orderCode}</p>
-        <p><b>Tổng tiền:</b> ${orderInfo.totalPrice.toLocaleString()}₫</p>
-        <p><b>Phương thức thanh toán:</b> ${orderInfo.paymentMethod}</p>
-        <p><b>Địa chỉ giao hàng:</b> ${orderInfo.address}, ${orderInfo.city}, ${orderInfo.country}</p>
-        <p><b>Sản phẩm:</b></p>
-        <ul>${itemsHtml}</ul>
-        <p>Cảm ơn bạn đã mua hàng!</p>
-      `
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("✅ Email xác nhận đơn hàng đã được gửi thành công!");
+    console.log("✅ Mail sent successfully:", response);
+    return { success: true, messageId: response.messageId };
   } catch (error) {
-    console.error("❌ Lỗi khi gửi email:", error);
+    console.error("❌ Lỗi gửi mail:", error);
+    return { success: false, error: error.message };
   }
 };
+
+module.exports = { sendEmailCreateOrder };
