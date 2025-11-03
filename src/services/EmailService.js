@@ -2,6 +2,30 @@ const SibApiV3Sdk = require('@sendinblue/client');
 const dotenv = require("dotenv");
 dotenv.config();
 
+// Hàm xử lý đường dẫn hình ảnh
+const processImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+
+  // Nếu đã là URL đầy đủ
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+
+  // Nếu là đường dẫn tương đối từ frontend
+  if (imagePath.startsWith('/') || imagePath.startsWith('./') || imagePath.startsWith('../')) {
+    // Xử lý đường dẫn tương đối thành URL đầy đủ
+    const cleanPath = imagePath.replace(/^\.?\//, '');
+    return `https://fontend-doan.vercel.app/${cleanPath}`;
+  }
+
+  // Nếu chỉ là tên file
+  if (imagePath.includes('.') && !imagePath.includes('/')) {
+    return `https://fontend-doan.vercel.app/images/${imagePath}`;
+  }
+
+  return `https://fontend-doan.vercel.app/${imagePath}`;
+};
+
 const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
   try {
     // ✅ VALIDATION CHẶT CHẼ
@@ -36,6 +60,18 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     let totalDiscount = 0;
     let htmlRows = "";
 
+    // Debug hình ảnh
+    console.log("🖼️ Debug hình ảnh sản phẩm:");
+    orderItems.forEach((item, index) => {
+      const processedImage = processImageUrl(item.image);
+      console.log(`Sản phẩm ${index + 1}:`, {
+        name: item.name,
+        originalImage: item.image,
+        processedImage: processedImage,
+        isHttp: processedImage ? processedImage.startsWith('http') : false
+      });
+    });
+
     // Xử lý từng sản phẩm
     orderItems.forEach((item) => {
       const itemPrice = Number(item.price) || 0;
@@ -49,12 +85,17 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
       subtotal += itemTotal;
       totalDiscount += itemDiscountAmount;
 
+      // Xử lý hình ảnh
+      const imageUrl = processImageUrl(item.image);
+
       htmlRows += `
         <tr>
           <td style="padding:12px; border:1px solid #ddd; text-align:center;">
-            ${item.image ?
-          `<img src="${item.image}" alt="${item.name}" style="width:60px; height:60px; object-fit:cover; border-radius:5px; border:1px solid #ddd;" />`
-          : '📦'
+            ${imageUrl ?
+          `<img src="${imageUrl}" alt="${item.name || 'Sản phẩm'}" 
+                style="width:60px; height:60px; object-fit:cover; border-radius:5px; border:1px solid #ddd;"
+                onerror="this.style.display='none'; this.parentNode.innerHTML='📦'" />`
+          : '<div style="width:60px; height:60px; background:#f0f0f0; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:20px;">📦</div>'
         }
           </td>
           <td style="padding:12px; border:1px solid #ddd;">
@@ -95,10 +136,25 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Xác nhận đơn hàng</title>
+        <title>Xác nhận đơn hàng - GH Electric</title>
+        <style>
+          @media only screen and (max-width: 600px) {
+            .container {
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 10px !important;
+            }
+            table {
+              width: 100% !important;
+            }
+            .mobile-hidden {
+              display: none !important;
+            }
+          }
+        </style>
       </head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background: #f5f5f5;">
-        <div style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <div class="container" style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
           <!-- Header -->
           <div style="background: linear-gradient(135deg, #2c5aa0 0%, #3a6bb0 100%); padding: 30px; text-align: center; color: white;">
             <h1 style="margin:0; font-size: 28px;">🎉 Đơn hàng của bạn đã được tạo thành công!</h1>
@@ -207,7 +263,7 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
             <p style="margin:5px 0; font-size:18px; font-weight:bold; color:#2c5aa0;">GH Electric</p>
             <p style="margin:5px 0;">📞 Hotline: 1900 1234</p>
             <p style="margin:5px 0;">📧 Email: trangiahuy04092018@gmail.com</p>
-            <p style="margin:5px 0;">🌐 Website: www.gh-electric.com</p>
+            <p style="margin:5px 0;">🌐 Website: <a href="https://fontend-doan.vercel.app" style="color:#2c5aa0; text-decoration:none;">fontend-doan.vercel.app</a></p>
             <p style="margin:15px 0 0 0; font-size:12px; color:#999;">
               Đây là email tự động, vui lòng không trả lời.
             </p>
