@@ -17,6 +17,8 @@ const server = createServer(app);
 const port = process.env.PORT || 3001;
 
 // server.js - COMPREHENSIVE CORS SOLUTION
+// server.js - SỬA PHẦN VERCEL PATTERNS
+
 const allowedOrigins = [
   'http://localhost:3000',
   'https://fontend-doan.vercel.app',
@@ -24,12 +26,12 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
-// Thêm các patterns Vercel phổ biến
+// ✅ SỬA REGEX PATTERNS - Cho phép cả dấu / cuối
 const vercelPatterns = [
-  /https:\/\/.*\.vercel\.app$/,
-  /https:\/\/.*-git-.*\.vercel\.app$/,
-  /https:\/\/.*-.*-.*\.vercel\.app$/,
-  /https:\/\/.*-huys-projects-.*\.vercel\.app$/
+  /https:\/\/.*\.vercel\.app\/?$/,           // Cho phép có hoặc không có /
+  /https:\/\/.*-git-.*\.vercel\.app\/?$/,    // Cho phép có hoặc không có /
+  /https:\/\/.*-.*-.*\.vercel\.app\/?$/,     // Cho phép có hoặc không có /
+  /https:\/\/.*-huys-projects-.*\.vercel\.app\/?$/  // Cho phép có hoặc không có /
 ];
 
 const checkOrigin = (origin) => {
@@ -37,35 +39,44 @@ const checkOrigin = (origin) => {
 
   console.log('🔍 Checking origin:', origin);
 
-  // Kiểm tra exact match
-  if (allowedOrigins.includes(origin)) {
+  // ✅ THÊM: Chuẩn hóa origin - bỏ dấu / cuối để so sánh exact match
+  const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+
+  // Kiểm tra exact match (cả normalized)
+  if (allowedOrigins.includes(origin) || allowedOrigins.includes(normalizedOrigin)) {
     console.log('✅ Exact match');
     return true;
   }
 
-  // Kiểm tra Vercel patterns
+  // Kiểm tra Vercel patterns (cả origin gốc và normalized)
   for (const pattern of vercelPatterns) {
-    if (pattern.test(origin)) {
-      console.log('✅ Vercel pattern match:', pattern);
+    if (pattern.test(origin) || pattern.test(normalizedOrigin)) {
+      console.log('✅ Vercel pattern match');
       return true;
     }
   }
 
-  // Kiểm tra domain suffixes
-  if (origin.endsWith('.vercel.app') || origin.endsWith('.now.sh')) {
+  // Kiểm tra domain suffixes (cả origin gốc và normalized)
+  if (origin.endsWith('.vercel.app') || origin.endsWith('.vercel.app/') ||
+    origin.endsWith('.now.sh') || origin.endsWith('.now.sh/') ||
+    normalizedOrigin.endsWith('.vercel.app') || normalizedOrigin.endsWith('.now.sh')) {
     console.log('✅ Domain suffix match');
     return true;
   }
 
   // Development
-  if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
+  if (process.env.NODE_ENV === 'development' &&
+    (origin.includes('localhost') || normalizedOrigin.includes('localhost'))) {
     console.log('✅ Development localhost');
     return true;
   }
 
-  console.log('❌ No match found');
+  console.log('❌ No match found for origin:', origin);
+  console.log('📋 Allowed origins:', allowedOrigins);
   return false;
 };
+
+// ... phần còn lại giữ nguyên
 
 // CORS config giữ nguyên...
 
