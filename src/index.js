@@ -107,6 +107,7 @@ app.use((req, res, next) => {
 
 
 // CORS cho Socket.io - FIXED
+// server.js (Phần Socket.io config)
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -119,8 +120,33 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 45000,
+  cookie: false,
+  allowEIO3: true
 });
+
+// Thêm engine event listeners
+io.engine.on("connection", (rawSocket) => {
+  console.log('🔄 Raw connection established, transport:', rawSocket.transport.name);
+
+  rawSocket.on("close", (reason, description) => {
+    console.log('🔌 Raw connection closed:', reason, description);
+  });
+
+  rawSocket.on("error", (error) => {
+    console.error('💥 Raw connection error:', error);
+  });
+});
+
+io.engine.on("connection_error", (err) => {
+  console.error('💥 Engine connection error:', err);
+});
+
+// Phần socket logic giữ nguyên như bạn đã có...
+// (Các event handlers cho 'connection', 'addUser', 'sendMessage', etc.)
 
 // Middleware
 app.use(bodyParser.json({ limit: '10mb' }));
