@@ -9,6 +9,8 @@ const userSchema = new mongoose.Schema(
         address: { type: String },
         avatar: { type: String },
         city: { type: String },
+        otp: { type: String }, // Thêm trường OTP
+        otpExpires: { type: Date } //
     },
     {
         timestamps: true
