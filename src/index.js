@@ -1,4 +1,4 @@
-// server.js - HOÀN CHỈNH VỚI FIX "MAX PAYLOAD SIZE EXCEEDED"
+// server.js - HOÀN CHỈNH VỚI LẤY TÊN THẬT TỪ DATABASE
 require('dotenv').config();
 
 const express = require("express");
@@ -170,23 +170,67 @@ app.post('/test-payment', async (req, res) => {
   res.json(result);
 });
 
-// ✅ HÀM TỐI ƯU HÓA DỮ LIỆU - GIẢM KÍCH THƯỚC PAYLOAD
-function optimizeConversations(conversations) {
-  return conversations.map(conv => ({
-    _id: conv._id?.toString(),
-    userId: conv.userId?._id?.toString() || conv.userId?.toString(),
-    userName: conv.userId?.name || 'Người dùng',
-    userAvatar: conv.userId?.avatar, // ✅ THÊM AVATAR
-    userEmail: conv.userId?.email,
-    lastMessage: conv.lastMessage ?
-      (conv.lastMessage.length > 100 ?
-        conv.lastMessage.substring(0, 100) + '...' :
-        conv.lastMessage)
-      : 'Chưa có tin nhắn',
-    lastMessageTime: conv.lastMessageTime,
-    unreadCount: conv.unreadCount || 0,
-    isActive: conv.isActive !== false
-  }));
+// ✅ HÀM LẤY TÊN THẬT TỪ USER
+async function getRealUserName(userId) {
+  try {
+    if (!userId || userId === 'admin') {
+      return userId === 'admin' ? 'Quản trị viên' : 'Người dùng';
+    }
+
+    const User = mongoose.model('User');
+    const user = await User.findById(userId).lean();
+
+    if (!user) {
+      console.log(`❌ User not found: ${userId}`);
+      return `User_${userId.substring(userId.length - 6)}`;
+    }
+
+    // ✅ THỬ CÁC TRƯỜNG TÊN KHÁC NHAU
+    const realName =
+      user.fullName ||
+      user.name ||
+      user.username ||
+      user.displayName ||
+      user.firstName ||
+      user.lastName ||
+      (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : null) ||
+      user.email?.split('@')[0] ||
+      `User_${userId.substring(userId.length - 6)}`;
+
+    console.log(`✅ Found real name for ${userId}: ${realName}`);
+    return realName;
+
+  } catch (error) {
+    console.log(`❌ Error getting user name for ${userId}:`, error);
+    return `User_${userId.substring(userId.length - 6)}`;
+  }
+}
+
+// ✅ HÀM TỐI ƯU HÓA CONVERSATIONS VỚI TÊN THẬT
+async function optimizeConversationsWithRealNames(conversations) {
+  const optimizedConversations = await Promise.all(
+    conversations.map(async (conv) => {
+      const realUserName = await getRealUserName(conv.userId);
+
+      return {
+        _id: conv._id?.toString(),
+        userId: conv.userId?.toString(),
+        userName: realUserName, // ✅ TÊN THẬT
+        userAvatar: conv.userId?.avatar,
+        userEmail: conv.userId?.email,
+        lastMessage: conv.lastMessage ?
+          (conv.lastMessage.length > 100 ?
+            conv.lastMessage.substring(0, 100) + '...' :
+            conv.lastMessage)
+          : 'Chưa có tin nhắn',
+        lastMessageTime: conv.lastMessageTime,
+        unreadCount: conv.unreadCount || 0,
+        isActive: conv.isActive !== false
+      };
+    })
+  );
+
+  return optimizedConversations;
 }
 
 function optimizeMessages(messages) {
@@ -272,10 +316,10 @@ io.on('connection', (socket) => {
       socket.emit('messageSent', {
         status: 'success',
         messageId: savedMessage._id,
-        message: optimizedMessage // ✅ Gửi message đã optimize
+        message: optimizedMessage
       });
 
-      // ✅ CẬP NHẬT CONVERSATIONS VỚI DỮ LIỆU TỐI ƯU
+      // ✅ CẬP NHẬT CONVERSATIONS VỚI TÊN THẬT
       await updateConversationsForAdmins();
 
     } catch (error) {
@@ -299,10 +343,9 @@ io.on('connection', (socket) => {
       const dataSize = Buffer.from(JSON.stringify(optimizedMessages)).length;
       console.log('📏 Chat history size:', dataSize, 'bytes');
 
-      if (dataSize > 500000) { // 500KB
+      if (dataSize > 500000) {
         console.warn('⚠️ Chat history large, consider pagination');
-        // Có thể cắt bớt messages nếu cần
-        const limitedMessages = optimizedMessages.slice(-50); // Giữ 50 tin nhắn gần nhất
+        const limitedMessages = optimizedMessages.slice(-50);
         socket.emit('chatHistory', limitedMessages);
       } else {
         socket.emit('chatHistory', optimizedMessages);
@@ -314,33 +357,29 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Lấy conversations với OPTIMIZATION
+  // ✅ LẤY CONVERSATIONS VỚI TÊN THẬT
   socket.on('getConversations', async () => {
     try {
       const { Conversation } = require('./models/ChatModel');
+
+      console.log('🔄 Getting conversations with REAL user names...');
+
       const conversations = await Conversation.find({ isActive: true })
         .sort({ lastMessageTime: -1 })
-        .limit(100) // ✅ GIỚI HẠN SỐ LƯỢNG
-        .populate('userId', 'name email avatar')
-        .lean(); // ✅ SỬ DỤNG LEAN ĐỂ GIẢM KÍCH THƯỚC
+        .limit(100)
+        .lean();
 
       console.log('📞 Found conversations:', conversations.length);
 
-      // ✅ TỐI ƯU HÓA DỮ LIỆU CONVERSATIONS
-      const optimizedConversations = optimizeConversations(conversations);
+      // ✅ TỐI ƯU HÓA VỚI TÊN THẬT
+      const optimizedConversations = await optimizeConversationsWithRealNames(conversations);
 
-      // ✅ KIỂM TRA KÍCH THƯỚC TRƯỚC KHI GỬI
-      const dataSize = Buffer.from(JSON.stringify(optimizedConversations)).length;
-      console.log('📏 Conversations data size:', dataSize, 'bytes');
+      console.log('🎯 Final conversations with REAL names:');
+      optimizedConversations.forEach((conv, index) => {
+        console.log(`  ${index + 1}. ${conv.userId} -> "${conv.userName}"`);
+      });
 
-      if (dataSize > 100000) { // 100KB
-        console.warn('⚠️ Conversations data large, truncating...');
-        // Cắt bớt nếu quá lớn
-        const limitedConversations = optimizedConversations.slice(0, 50); // Giữ 50 conversations đầu
-        socket.emit('conversationsList', limitedConversations);
-      } else {
-        socket.emit('conversationsList', optimizedConversations);
-      }
+      socket.emit('conversationsList', optimizedConversations);
 
     } catch (error) {
       console.error('❌ Error getting conversations:', error);
@@ -359,7 +398,7 @@ io.on('connection', (socket) => {
 
       socket.emit('messagesRead', { userId, success: true });
 
-      // ✅ CẬP NHẬT VỚI DỮ LIỆU TỐI ƯU
+      // ✅ CẬP NHẬT VỚI TÊN THẬT
       await updateConversationsForAdmins();
 
     } catch (error) {
@@ -383,7 +422,7 @@ io.on('connection', (socket) => {
 
       socket.emit('allMessagesRead', { success: true });
 
-      // ✅ CẬP NHẬT VỚI DỮ LIỆU TỐI ƯU
+      // ✅ CẬP NHẬT VỚI TÊN THẬT
       await updateConversationsForAdmins();
 
     } catch (error) {
@@ -411,7 +450,6 @@ io.on('connection', (socket) => {
       }
     }
 
-    // ✅ CẬP NHẬT ONLINE USERS VỚI DỮ LIỆU TỐI ƯU
     const optimizedUsers = Array.from(onlineUsers.values()).map(user => ({
       id: user.userId,
       name: user.userName,
@@ -427,17 +465,17 @@ io.on('connection', (socket) => {
   });
 });
 
-// ✅ HÀM CẬP NHẬT CONVERSATIONS CHO ADMINS
+// ✅ HÀM CẬP NHẬT CONVERSATIONS CHO ADMINS VỚI TÊN THẬT
 async function updateConversationsForAdmins() {
   try {
     const { Conversation } = require('./models/ChatModel');
+
     const conversations = await Conversation.find({ isActive: true })
       .sort({ lastMessageTime: -1 })
       .limit(100)
-      .populate('userId', 'name email avatar')
       .lean();
 
-    const optimizedConversations = optimizeConversations(conversations);
+    const optimizedConversations = await optimizeConversationsWithRealNames(conversations);
 
     // Gửi đến tất cả admin
     for (let [userId, userInfo] of onlineUsers) {
@@ -446,7 +484,7 @@ async function updateConversationsForAdmins() {
       }
     }
 
-    console.log('🔄 Updated conversations for admins');
+    console.log('🔄 Updated conversations for admins with real names');
   } catch (error) {
     console.error('❌ Error updating conversations:', error);
   }
@@ -479,6 +517,26 @@ if (!process.env.STRIPE_SECRET_KEY) {
 } else {
   console.log('✅ STRIPE_SECRET_KEY đã load thành công.');
 }
+
+// ✅ DEBUG USER SCHEMA
+async function debugUserSchema() {
+  try {
+    const User = mongoose.model('User');
+    const sampleUser = await User.findOne().lean();
+
+    if (sampleUser) {
+      console.log('🔍 USER SCHEMA FIELDS:', Object.keys(sampleUser));
+      console.log('📝 SAMPLE USER DATA:', sampleUser);
+    } else {
+      console.log('⚠️ No users found in database');
+    }
+  } catch (error) {
+    console.log('❌ Error debugging user schema:', error);
+  }
+}
+
+// Gọi debug sau khi kết nối DB
+setTimeout(debugUserSchema, 2000);
 
 // Xử lý lỗi toàn cục
 process.on('unhandledRejection', (err) => {
