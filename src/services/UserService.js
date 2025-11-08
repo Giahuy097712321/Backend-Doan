@@ -223,46 +223,49 @@ const changePassword = (userId, oldPassword, newPassword) => {
 }
 
 // Thêm hàm quên mật khẩu
+// Trong backend UserService.js - kiểm tra email service
 const forgotPassword = (email) => {
     return new Promise(async (resolve, reject) => {
         try {
-            const user = await User.findOne({ email })
+            console.log('📧 Bắt đầu forgotPassword cho:', email);
+
+            const user = await User.findOne({ email });
             if (!user) {
-                resolve({
-                    status: 'ERR',
-                    message: 'Email not found'
-                })
+                console.log('❌ User không tồn tại');
+                resolve({ status: 'ERR', message: 'Email không tồn tại' });
+                return;
             }
 
-            // Tạo OTP và thời gian hết hạn (10 phút)
-            const otp = generateOTP()
-            const otpExpires = new Date(Date.now() + 10 * 60 * 1000) // 10 phút
+            console.log('✅ Tìm thấy user:', user.name);
 
-            // Lưu OTP vào user
-            user.otp = otp
-            user.otpExpires = otpExpires
-            await user.save()
+            // Tạo OTP
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            console.log('🔐 OTP:', otp);
 
-            // Gửi OTP qua email
-            const emailResult = await EmailService.sendOTPEmail(email, otp, user.name)
+            // Lưu OTP
+            user.otp = otp;
+            user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+            await user.save();
+            console.log('💾 Đã lưu OTP');
+
+            // Gửi email - KIỂM TRA PHẦN NÀY
+            console.log('📤 Gửi email...');
+            const emailResult = await EmailService.sendOTPEmail(email, otp, user.name);
+            console.log('📩 Kết quả gửi email:', emailResult);
 
             if (emailResult.success) {
-                resolve({
-                    status: 'OK',
-                    message: 'OTP sent to your email'
-                })
+                resolve({ status: 'OK', message: 'OTP đã gửi' });
             } else {
-                resolve({
-                    status: 'ERR',
-                    message: 'Failed to send OTP email'
-                })
+                console.log('❌ Lỗi gửi email:', emailResult.error);
+                resolve({ status: 'ERR', message: 'Lỗi gửi email: ' + emailResult.error });
             }
 
-        } catch (e) {
-            reject(e)
+        } catch (error) {
+            console.error('💥 Lỗi forgotPassword:', error);
+            reject(error);
         }
-    })
-}
+    });
+};
 
 // Thêm hàm reset mật khẩu
 const resetPassword = (email, otp, newPassword) => {

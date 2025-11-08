@@ -230,5 +230,78 @@ const sendEmailCreateOrder = async (email, orderItems, orderInfo) => {
     return { success: false, error: error.message };
   }
 };
+const sendOTPEmail = async (email, otp, userName = '') => {
+  try {
+    const client = new SibApiV3Sdk.TransactionalEmailsApi();
+    client.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
 
-module.exports = { sendEmailCreateOrder };
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Mã OTP đặt lại mật khẩu</title>
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background: #f5f5f5;">
+        <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #2c5aa0 0%, #3a6bb0 100%); padding: 30px; text-align: center; color: white;">
+            <h1 style="margin:0; font-size: 24px;">🔐 Đặt lại mật khẩu</h1>
+            <p style="margin:10px 0 0 0; font-size: 16px; opacity:0.9;">GH Electric</p>
+          </div>
+
+          <!-- Content -->
+          <div style="padding: 30px;">
+            <p>Xin chào <strong>${userName || 'bạn'}</strong>,</p>
+            <p>Chúng tôi đã nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.</p>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+              <p style="margin:0 0 10px 0; font-size: 14px;">Mã OTP của bạn là:</p>
+              <div style="font-size: 32px; font-weight: bold; color: #2c5aa0; letter-spacing: 5px;">
+                ${otp}
+              </div>
+              <p style="margin:10px 0 0 0; font-size: 12px; color: #666;">
+                Mã OTP có hiệu lực trong 10 phút
+              </p>
+            </div>
+
+            <p style="color: #666; font-size: 14px;">
+              <strong>Lưu ý:</strong> Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="text-align:center; padding: 20px; color: #666; border-top: 1px solid #eee; background: #f8f9fa;">
+            <p style="margin:5px 0;">Trân trọng,</p>
+            <p style="margin:5px 0; font-size:18px; font-weight:bold; color:#2c5aa0;">GH Electric</p>
+            <p style="margin:5px 0; font-size:12px;">
+              📞 Hotline: 1900 1234 | 📧 Email: trangiahuy04092018@gmail.com
+            </p>
+            <p style="margin:15px 0 0 0; font-size:11px; color:#999;">
+              Đây là email tự động, vui lòng không trả lời.
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const response = await client.sendTransacEmail({
+      sender: { email: 'trangiahuy04092018@gmail.com', name: 'GH Electric' },
+      to: [{ email }],
+      subject: `🔐 Mã OTP đặt lại mật khẩu - GH Electric`,
+      htmlContent: htmlContent,
+    });
+
+    console.log("✅ OTP email sent successfully via Brevo:", response);
+    return { success: true, messageId: response.messageId };
+
+  } catch (error) {
+    console.error("❌ Lỗi gửi OTP email qua Brevo:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+module.exports = { sendEmailCreateOrder, sendOTPEmail };
