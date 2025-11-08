@@ -1,5 +1,6 @@
 const UserService = require('../services/UserService')
 const JwtService = require('../services/JwtService')
+
 const createUser = async (req, res) => {
     try {
         console.log(req.body)
@@ -33,6 +34,7 @@ const createUser = async (req, res) => {
         })
     }
 }
+
 const loginUser = async (req, res) => {
     try {
         console.log(req.body)
@@ -52,12 +54,11 @@ const loginUser = async (req, res) => {
             })
         }
 
-
         const result = await UserService.loginUser(req.body)
         const { refresh_token, ...newResult } = result
         res.cookie('refresh_token', refresh_token, {
             httpOnly: true,
-            secure: false,    // true nếu chạy HTTPS (VD: deploy)
+            secure: false,
             sameSite: 'strict'
         })
         return res.status(200).json(newResult)
@@ -67,6 +68,7 @@ const loginUser = async (req, res) => {
         })
     }
 }
+
 const updateUser = async (req, res) => {
     try {
         const userId = req.params.id
@@ -86,6 +88,7 @@ const updateUser = async (req, res) => {
         })
     }
 }
+
 const deleteUser = async (req, res) => {
     try {
         const userId = req.params.id
@@ -105,9 +108,10 @@ const deleteUser = async (req, res) => {
         })
     }
 }
+
 const deleteManyUser = async (req, res) => {
     try {
-        const { ids } = req.body; // destructuring cho gọn
+        const { ids } = req.body;
         if (!ids || ids.length === 0) {
             return res.status(200).json({
                 status: 'ERR',
@@ -126,7 +130,6 @@ const deleteManyUser = async (req, res) => {
 
 const getAllUser = async (req, res) => {
     try {
-
         const result = await UserService.getAllUser()
         return res.status(200).json(result)
     } catch (e) {
@@ -135,6 +138,7 @@ const getAllUser = async (req, res) => {
         })
     }
 }
+
 const getDetailsUser = async (req, res) => {
     try {
         const userId = req.params.id
@@ -154,6 +158,7 @@ const getDetailsUser = async (req, res) => {
         })
     }
 }
+
 const refreshToken = async (req, res) => {
     console.log('req.cookies.refresh_token', req.cookies.refresh_token)
     try {
@@ -168,27 +173,117 @@ const refreshToken = async (req, res) => {
 
         const result = await JwtService.refreshTokenJwtService(token)
         return res.status(200).json(result)
-        return
     } catch (e) {
         return res.status(404).json({
             message: e
         })
     }
 }
+
 const logoutUser = async (req, res) => {
     try {
         res.clearCookie('refresh_token')
         return res.status(200).json({
             status: 'OK',
-            message: 'Loout successfully'
+            message: 'Logout successfully'
         })
-
     } catch (e) {
         return res.status(404).json({
             message: e
         })
     }
 }
+
+// Thêm chức năng đổi mật khẩu
+const changePassword = async (req, res) => {
+    try {
+        const userId = req.params.id
+        const { oldPassword, newPassword, confirmPassword } = req.body
+
+        if (!userId || !oldPassword || !newPassword || !confirmPassword) {
+            return res.status(200).json({
+                status: 'ERR',
+                message: 'All fields are required'
+            });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(200).json({
+                status: 'ERR',
+                message: 'New password and confirm password do not match'
+            });
+        }
+
+        const result = await UserService.changePassword(userId, oldPassword, newPassword)
+        return res.status(200).json(result)
+    } catch (e) {
+        return res.status(404).json({
+            message: e
+        })
+    }
+}
+
+// Thêm chức năng gửi OTP quên mật khẩu
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body
+
+        if (!email) {
+            return res.status(200).json({
+                status: 'ERR',
+                message: 'Email is required'
+            });
+        }
+
+        const reg = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+        const isCheckEmail = reg.test(email)
+
+        if (!isCheckEmail) {
+            return res.status(200).json({
+                status: 'ERR',
+                message: 'Invalid email format'
+            });
+        }
+
+        const result = await UserService.forgotPassword(email)
+        return res.status(200).json(result)
+    } catch (e) {
+        return res.status(404).json({
+            message: e
+        })
+    }
+}
+
+// Thêm chức năng xác thực OTP và đặt lại mật khẩu
+const resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword, confirmPassword } = req.body
+
+        if (!email || !otp || !newPassword || !confirmPassword) {
+            return res.status(200).json({
+                status: 'ERR',
+                message: 'All fields are required'
+            });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(200).json({
+                status: 'ERR',
+                message: 'New password and confirm password do not match'
+            });
+        }
+
+        const result = await UserService.resetPassword(email, otp, newPassword)
+        return res.status(200).json(result)
+    } catch (e) {
+        return res.status(404).json({
+            message: e
+        })
+    }
+}
+
 module.exports = {
-    deleteManyUser, createUser, loginUser, updateUser, deleteUser, getAllUser, getDetailsUser, refreshToken, logoutUser
+    deleteManyUser, createUser, loginUser, updateUser, deleteUser,
+    getAllUser, getDetailsUser, refreshToken, logoutUser,
+    changePassword, forgotPassword, resetPassword
 }
