@@ -21,7 +21,7 @@ const port = process.env.PORT || 3001;
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://fontend-doan.vercel.app',
+  'https://trangiahuy-datn.vercel.app',
   'https://fontend-doan-git-main-huys-projects-c7d34491.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
