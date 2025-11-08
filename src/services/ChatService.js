@@ -1,10 +1,8 @@
-// services/ChatService.js
+// services/ChatService.js - FIX LỖI mongoose is not defined
+const mongoose = require('mongoose'); // ✅ THÊM DÒNG NÀY
 const { Message, Conversation } = require('../models/ChatModel');
-const User = require('../models/UserModel');
 
 const ChatService = {
-    // services/ChatService.js - kiểm tra phần saveMessage
-    // services/ChatService.js - SỬA PHẦN saveMessage
     saveMessage: async (messageData) => {
         try {
             console.log('💾 Saving message:', messageData);
@@ -13,13 +11,14 @@ const ChatService = {
                 senderId: messageData.senderId,
                 receiverId: messageData.receiverId,
                 message: messageData.message,
-                timestamp: messageData.timestamp || new Date()
+                timestamp: messageData.timestamp || new Date(),
+                isRead: messageData.isRead || false
             });
 
             const savedMessage = await message.save();
             console.log('✅ Message saved to DB:', savedMessage._id);
 
-            // ✅ FIX: LUÔN CẬP NHẬT TÊN THẬT KHI CÓ TIN NHẮN MỚI
+            // ✅ FIX: LUÔN CẬP NHẬT CONVERSATION VỚI TÊN THẬT
             if (messageData.receiverId === 'admin' && messageData.senderId !== 'admin') {
                 let realUserName = 'Khách hàng';
 
@@ -27,10 +26,14 @@ const ChatService = {
                     const User = mongoose.model('User');
                     const user = await User.findById(messageData.senderId);
                     if (user) {
-                        realUserName = user.name || user.username || user.email?.split('@')[0] || `User_${messageData.senderId.substring(messageData.senderId.length - 6)}`;
+                        realUserName = user.fullName || user.name || user.username ||
+                            user.displayName || user.email?.split('@')[0] ||
+                            `User_${messageData.senderId.substring(messageData.senderId.length - 6)}`;
                     }
                 } catch (error) {
                     console.log('❌ Error getting user info:', error);
+                    // Fallback an toàn
+                    realUserName = `User_${messageData.senderId.substring(messageData.senderId.length - 6)}`;
                 }
 
                 await Conversation.findOneAndUpdate(
@@ -48,6 +51,38 @@ const ChatService = {
 
                 console.log('📝 Conversation updated with real name:', realUserName);
             }
+            // ✅ FIX: CẬP NHẬT KHI ADMIN GỬI TIN NHẮN
+            else if (messageData.senderId === 'admin') {
+                let realUserName = 'Khách hàng';
+
+                try {
+                    const User = mongoose.model('User');
+                    const user = await User.findById(messageData.receiverId);
+                    if (user) {
+                        realUserName = user.fullName || user.name || user.username ||
+                            user.displayName || user.email?.split('@')[0] ||
+                            `User_${messageData.receiverId.substring(messageData.receiverId.length - 6)}`;
+                    }
+                } catch (error) {
+                    console.log('❌ Error getting user info for admin message:', error);
+                    realUserName = `User_${messageData.receiverId.substring(messageData.receiverId.length - 6)}`;
+                }
+
+                await Conversation.findOneAndUpdate(
+                    { userId: messageData.receiverId },
+                    {
+                        userId: messageData.receiverId,
+                        userName: realUserName,
+                        lastMessage: messageData.message,
+                        lastMessageTime: messageData.timestamp || new Date(),
+                        unreadCount: 0, // Admin gửi thì không tăng unreadCount
+                        isActive: true
+                    },
+                    { upsert: true, new: true }
+                );
+
+                console.log('📝 Conversation updated for admin message:', realUserName);
+            }
 
             return savedMessage;
 
@@ -64,7 +99,10 @@ const ChatService = {
                     { senderId: userId, receiverId: targetId },
                     { senderId: targetId, receiverId: userId }
                 ]
-            }).sort({ timestamp: 1 }).limit(limit).lean();
+            })
+                .sort({ timestamp: 1 })
+                .limit(limit)
+                .lean();
 
             console.log('📨 Retrieved messages count:', messages.length);
             return messages;
@@ -111,16 +149,32 @@ const ChatService = {
                 {
                     $set: {
                         unreadCount: unreadCount,
-                        readAt: new Date()
+                        lastUpdate: new Date()
                     }
                 },
-                { upsert: true }
+                { upsert: true, new: true }
             );
 
             console.log('🔄 Updated unread count for user:', userId, 'Count:', unreadCount);
             return unreadCount;
         } catch (error) {
             console.error('❌ Error updating unread count:', error);
+            throw new Error(error.message);
+        }
+    },
+
+    // ✅ THÊM HÀM MỚI: Lấy conversations với real-time data
+    getConversationsWithRealNames: async () => {
+        try {
+            const conversations = await Conversation.find({ isActive: true })
+                .sort({ lastMessageTime: -1 })
+                .limit(100)
+                .lean();
+
+            console.log('📞 Raw conversations from DB:', conversations.length);
+            return conversations;
+        } catch (error) {
+            console.error('❌ Error getting conversations:', error);
             throw new Error(error.message);
         }
     }
