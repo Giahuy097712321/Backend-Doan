@@ -1,12 +1,13 @@
+// models/ChatModel.js
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
     senderId: {
-        type: String, // Đổi từ ObjectId thành String vì có thể là 'admin'
+        type: String,
         required: true
     },
     receiverId: {
-        type: String, // 'admin' hoặc userId
+        type: String,
         required: true
     },
     message: {
@@ -25,13 +26,14 @@ const messageSchema = new mongoose.Schema({
 
 const conversationSchema = new mongoose.Schema({
     userId: {
-        type: String, // Đổi từ ObjectId thành String cho đơn giản
+        type: mongoose.Schema.Types.ObjectId, // ✅ ĐỔI LẠI THÀNH ObjectId
+        ref: 'User', // ✅ THÊM REFERENCE
         required: true,
         unique: true
     },
     userName: {
         type: String,
-        required: true
+        default: ''
     },
     lastMessage: {
         type: String,
@@ -49,7 +51,7 @@ const conversationSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
-    readAt: {  // 🆕 Thêm field này
+    readAt: {
         type: Date
     }
 });
