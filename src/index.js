@@ -413,17 +413,32 @@ io.on('connection', (socket) => {
   // server.js - FIX REAL-TIME CHAT HISTORY
   // ... (phần trên giữ nguyên) ...
 
-  // Gửi tin nhắn với OPTIMIZATION - FIXED REAL-TIME
+  // server.js - FIX REAL-TIME MESSAGES
+  // ... (phần trên giữ nguyên) ...
+
+  // Gửi tin nhắn với FIX REAL-TIME
   socket.on('sendMessage', async (messageData) => {
     try {
-      console.log('📨 New message received from:', messageData.senderId);
+      console.log('📨 New message received:', {
+        senderId: messageData.senderId,
+        receiverId: messageData.receiverId,
+        message: messageData.message,
+        timestamp: messageData.timestamp
+      });
 
       const ChatService = require('./services/ChatService');
-      const savedMessage = await ChatService.saveMessage(messageData);
 
-      console.log('💾 Message saved:', savedMessage._id);
+      let savedMessage;
+      try {
+        savedMessage = await ChatService.saveMessage(messageData);
+        console.log('💾 Message saved successfully:', savedMessage._id);
+      } catch (saveError) {
+        console.error('❌ FAILED to save message:', saveError);
+        socket.emit('messageError', { error: 'Lỗi lưu tin nhắn: ' + saveError.message });
+        return;
+      }
 
-      // ✅ TỐI ƯU HÓA TIN NHẮN TRƯỚC KHI GỬI
+      // ✅ TỐI ƯU HÓA TIN NHẮN
       const optimizedMessage = {
         _id: savedMessage._id.toString(),
         senderId: savedMessage.senderId,
@@ -433,65 +448,58 @@ io.on('connection', (socket) => {
         isRead: savedMessage.isRead || false
       };
 
-      console.log('📤 Optimized message ready:', optimizedMessage);
+      console.log('📤 Sending optimized message:', optimizedMessage);
 
-      // ✅ FIX: GỬI TIN NHẮN REAL-TIME ĐẾN CẢ 2 BÊN
+      // ✅ FIX: GỬI TIN NHẮN REAL-TIME ĐẾN TẤT CẢ NGƯỜI DÙNG LIÊN QUAN
+      const targetUserIds = new Set();
+
       if (messageData.receiverId === 'admin') {
-        // Tin nhắn từ user gửi đến admin
-        let adminFound = false;
+        // Tin nhắn từ user → admin
+        targetUserIds.add(messageData.senderId); // User gửi
 
-        // Gửi đến tất cả admin online
+        // Tìm tất cả admin online
         for (let [userId, userInfo] of onlineUsers) {
           if (userInfo.role === 'admin') {
-            // Gửi tin nhắn real-time
-            io.to(userInfo.socketId).emit('receiveMessage', optimizedMessage);
-            console.log('📤 Sent real-time message to admin:', userId);
-
-            // ✅ FIX QUAN TRỌNG: GỬI CẢ CHAT HISTORY UPDATE
-            const updatedMessages = await ChatService.getMessages(messageData.senderId, 'admin');
-            const optimizedUpdatedMessages = optimizeMessages(updatedMessages);
-            io.to(userInfo.socketId).emit('chatHistory', optimizedUpdatedMessages);
-            console.log('🔄 Updated chat history for admin');
-
-            adminFound = true;
+            targetUserIds.add(userId);
           }
-        }
-
-        // Gửi lại cho user gửi (để hiển thị trong chat của họ)
-        const senderUser = onlineUsers.get(messageData.senderId);
-        if (senderUser) {
-          io.to(senderUser.socketId).emit('receiveMessage', optimizedMessage);
-          console.log('📤 Sent back to sender:', messageData.senderId);
-        }
-
-        if (!adminFound) {
-          console.log('⚠️ No admin online, message stored only.');
         }
       } else {
-        // Tin nhắn từ admin gửi đến user
-        const userReceiver = onlineUsers.get(messageData.receiverId);
-        if (userReceiver) {
-          io.to(userReceiver.socketId).emit('receiveMessage', optimizedMessage);
-          console.log('📤 Sent to user:', messageData.receiverId);
-        }
+        // Tin nhắn từ admin → user
+        targetUserIds.add(messageData.receiverId); // User nhận
 
-        // Gửi lại cho admin (để hiển thị trong chat của admin)
+        // Tìm tất cả admin online
         for (let [userId, userInfo] of onlineUsers) {
           if (userInfo.role === 'admin') {
-            io.to(userInfo.socketId).emit('receiveMessage', optimizedMessage);
-            console.log('📤 Sent to admin:', userId);
-
-            // ✅ FIX QUAN TRỌNG: GỬI CẢ CHAT HISTORY UPDATE CHO ADMIN
-            const updatedMessages = await ChatService.getMessages(messageData.receiverId, 'admin');
-            const optimizedUpdatedMessages = optimizeMessages(updatedMessages);
-            io.to(userInfo.socketId).emit('chatHistory', optimizedUpdatedMessages);
-            console.log('🔄 Updated chat history for admin after sending message');
+            targetUserIds.add(userId);
           }
         }
+      }
 
-        if (!userReceiver) {
-          console.log('⚠️ User not online, message stored only.');
+      // ✅ GỬI TIN NHẮN REAL-TIME
+      for (let targetUserId of targetUserIds) {
+        const targetUser = onlineUsers.get(targetUserId);
+        if (targetUser) {
+          io.to(targetUser.socketId).emit('receiveMessage', optimizedMessage);
+          console.log('📤 Sent real-time message to:', targetUserId);
         }
+      }
+
+      // ✅ FIX QUAN TRỌNG: GỬI CHAT HISTORY UPDATE CHO TẤT CẢ ADMIN
+      let historyUserId = messageData.receiverId === 'admin' ? messageData.senderId : messageData.receiverId;
+
+      try {
+        const updatedMessages = await ChatService.getMessages(historyUserId, 'admin');
+        const optimizedUpdatedMessages = optimizeMessages(updatedMessages);
+
+        // Gửi đến tất cả admin
+        for (let [userId, userInfo] of onlineUsers) {
+          if (userInfo.role === 'admin') {
+            io.to(userInfo.socketId).emit('chatHistory', optimizedUpdatedMessages);
+            console.log('🔄 Updated FULL chat history for admin:', userId, 'Total messages:', updatedMessages.length);
+          }
+        }
+      } catch (historyError) {
+        console.error('❌ Error updating chat history:', historyError);
       }
 
       // Gửi xác nhận cho người gửi
@@ -501,19 +509,19 @@ io.on('connection', (socket) => {
         message: optimizedMessage
       });
 
-      // ✅ CẬP NHẬT CONVERSATIONS VỚI TÊN THẬT
+      // ✅ CẬP NHẬT CONVERSATIONS
       await updateConversationsForAdmins();
 
     } catch (error) {
-      console.error('❌ Error sending message:', error);
-      socket.emit('messageError', { error: error.message });
+      console.error('❌ Error in sendMessage:', error);
+      socket.emit('messageError', { error: 'Lỗi hệ thống: ' + error.message });
     }
   });
 
-  // Lấy lịch sử chat với OPTIMIZATION - FIXED
+  // Lấy lịch sử chat với FIX ĐẦY ĐỦ
   socket.on('getChatHistory', async (userId) => {
     try {
-      console.log('🔄 Loading chat history for:', userId);
+      console.log('🔄 Loading FULL chat history for:', userId);
 
       const ChatService = require('./services/ChatService');
       const messages = await ChatService.getMessages(userId, 'admin');
@@ -521,18 +529,27 @@ io.on('connection', (socket) => {
       // ✅ TỐI ƯU HÓA LỊCH SỬ CHAT
       const optimizedMessages = optimizeMessages(messages);
 
-      console.log('📚 Sent chat history for user:', userId, 'Messages:', optimizedMessages.length);
+      console.log('📚 Sending FULL chat history to client:', optimizedMessages.length, 'messages');
 
-      // ✅ FIX: LUÔN GỬI TOÀN BỘ LỊCH SỬ MỚI NHẤT
+      // ✅ LOG TẤT CẢ TIN NHẮN ĐỂ DEBUG
+      console.log('🎯 ALL MESSAGES IN RESPONSE:');
+      optimizedMessages.forEach((msg, index) => {
+        const time = new Date(msg.timestamp).toLocaleTimeString('vi-VN');
+        const sender = msg.senderId === 'admin' ? 'ADMIN' : 'USER';
+        console.log(`  ${index + 1}. [${time}] ${sender}: ${msg.message}`);
+      });
+
       socket.emit('chatHistory', optimizedMessages);
 
-      console.log('✅ Chat history sent successfully');
+      console.log('✅ FULL Chat history sent successfully');
 
     } catch (error) {
       console.error('❌ Error getting chat history:', error);
       socket.emit('chatHistoryError', { error: error.message });
     }
   });
+
+  // ... (phần còn lại giữ nguyên) ...
 
   // ... (phần còn lại giữ nguyên) ...
 
