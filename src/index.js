@@ -1,4 +1,4 @@
-// server.js
+// server.js - HOÀN CHỈNH VỚI FIX "MAX PAYLOAD SIZE EXCEEDED"
 require('dotenv').config();
 
 const express = require("express");
@@ -16,9 +16,7 @@ const app = express();
 const server = createServer(app);
 const port = process.env.PORT || 3001;
 
-// server.js - COMPREHENSIVE CORS SOLUTION
-// server.js - SỬA PHẦN VERCEL PATTERNS
-
+// CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000',
   'https://trangiahuy-datn.vercel.app',
@@ -26,29 +24,24 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
-// ✅ SỬA REGEX PATTERNS - Cho phép cả dấu / cuối
 const vercelPatterns = [
-  /https:\/\/.*\.vercel\.app\/?$/,           // Cho phép có hoặc không có /
-  /https:\/\/.*-git-.*\.vercel\.app\/?$/,    // Cho phép có hoặc không có /
-  /https:\/\/.*-.*-.*\.vercel\.app\/?$/,     // Cho phép có hoặc không có /
-  /https:\/\/.*-huys-projects-.*\.vercel\.app\/?$/  // Cho phép có hoặc không có /
+  /https:\/\/.*\.vercel\.app\/?$/,
+  /https:\/\/.*-git-.*\.vercel\.app\/?$/,
+  /https:\/\/.*-.*-.*\.vercel\.app\/?$/,
+  /https:\/\/.*-huys-projects-.*\.vercel\.app\/?$/
 ];
 
 const checkOrigin = (origin) => {
   if (!origin) return true;
 
   console.log('🔍 Checking origin:', origin);
-
-  // ✅ THÊM: Chuẩn hóa origin - bỏ dấu / cuối để so sánh exact match
   const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
 
-  // Kiểm tra exact match (cả normalized)
   if (allowedOrigins.includes(origin) || allowedOrigins.includes(normalizedOrigin)) {
     console.log('✅ Exact match');
     return true;
   }
 
-  // Kiểm tra Vercel patterns (cả origin gốc và normalized)
   for (const pattern of vercelPatterns) {
     if (pattern.test(origin) || pattern.test(normalizedOrigin)) {
       console.log('✅ Vercel pattern match');
@@ -56,7 +49,6 @@ const checkOrigin = (origin) => {
     }
   }
 
-  // Kiểm tra domain suffixes (cả origin gốc và normalized)
   if (origin.endsWith('.vercel.app') || origin.endsWith('.vercel.app/') ||
     origin.endsWith('.now.sh') || origin.endsWith('.now.sh/') ||
     normalizedOrigin.endsWith('.vercel.app') || normalizedOrigin.endsWith('.now.sh')) {
@@ -64,7 +56,6 @@ const checkOrigin = (origin) => {
     return true;
   }
 
-  // Development
   if (process.env.NODE_ENV === 'development' &&
     (origin.includes('localhost') || normalizedOrigin.includes('localhost'))) {
     console.log('✅ Development localhost');
@@ -72,17 +63,10 @@ const checkOrigin = (origin) => {
   }
 
   console.log('❌ No match found for origin:', origin);
-  console.log('📋 Allowed origins:', allowedOrigins);
   return false;
 };
 
-// ... phần còn lại giữ nguyên
-
-// CORS config giữ nguyên...
-
-// CORS cho Express - FIXED
-// === GLOBAL CORS FALLBACK ===
-// Đảm bảo mọi phản hồi đều có header CORS, kể cả khi bị lỗi.
+// CORS cho Express
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
@@ -97,7 +81,6 @@ app.use((req, res, next) => {
   );
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 
-  // Đáp ứng nhanh cho preflight request (OPTIONS)
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -105,9 +88,7 @@ app.use((req, res, next) => {
   next();
 });
 
-
-// CORS cho Socket.io - FIXED
-// server.js (Phần Socket.io config)
+// ✅ QUAN TRỌNG: Socket.io config với MAX PAYLOAD SIZE LỚN
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -121,6 +102,8 @@ const io = new Server(server, {
     credentials: true
   },
   transports: ['websocket', 'polling'],
+  // ✅ FIX LỖI "MAX PAYLOAD SIZE EXCEEDED"
+  maxHttpBufferSize: 10e6, // 10MB (mặc định là 1MB)
   pingTimeout: 60000,
   pingInterval: 25000,
   connectTimeout: 45000,
@@ -128,7 +111,7 @@ const io = new Server(server, {
   allowEIO3: true
 });
 
-// Thêm engine event listeners
+// Engine event listeners
 io.engine.on("connection", (rawSocket) => {
   console.log('🔄 Raw connection established, transport:', rawSocket.transport.name);
 
@@ -145,15 +128,12 @@ io.engine.on("connection_error", (err) => {
   console.error('💥 Engine connection error:', err);
 });
 
-// Phần socket logic giữ nguyên như bạn đã có...
-// (Các event handlers cho 'connection', 'addUser', 'sendMessage', etc.)
-
 // Middleware
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+app.use(bodyParser.json({ limit: '50mb' })); // Tăng limit cho express
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 
-// Health check endpoint - THÊM CORS MANUAL
+// Health check endpoint
 app.get('/health', (req, res) => {
   const origin = req.headers.origin;
   if (checkOrigin(origin)) {
@@ -166,7 +146,10 @@ app.get('/health', (req, res) => {
     message: 'Server is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    allowedOrigins: allowedOrigins
+    socketConfig: {
+      maxHttpBufferSize: '10MB',
+      transports: ['websocket', 'polling']
+    }
   });
 });
 
@@ -187,7 +170,35 @@ app.post('/test-payment', async (req, res) => {
   res.json(result);
 });
 
-// Socket.io logic
+// ✅ HÀM TỐI ƯU HÓA DỮ LIỆU - GIẢM KÍCH THƯỚC PAYLOAD
+function optimizeConversations(conversations) {
+  return conversations.map(conv => ({
+    _id: conv._id?.toString(),
+    userId: conv.userId?._id?.toString() || conv.userId?.toString(),
+    userName: conv.userId?.name || 'Người dùng',
+    lastMessage: conv.lastMessage ?
+      (conv.lastMessage.length > 100 ?
+        conv.lastMessage.substring(0, 100) + '...' :
+        conv.lastMessage)
+      : 'Chưa có tin nhắn',
+    lastMessageTime: conv.lastMessageTime,
+    unreadCount: conv.unreadCount || 0,
+    isActive: conv.isActive !== false
+  }));
+}
+
+function optimizeMessages(messages) {
+  return messages.map(msg => ({
+    _id: msg._id?.toString(),
+    senderId: msg.senderId,
+    receiverId: msg.receiverId,
+    message: msg.message,
+    timestamp: msg.timestamp,
+    isRead: msg.isRead || false
+  }));
+}
+
+// Socket.io logic với OPTIMIZATION
 const onlineUsers = new Map();
 
 io.on('connection', (socket) => {
@@ -200,26 +211,44 @@ io.on('connection', (socket) => {
       ...userData
     });
     console.log('👥 Online users:', Array.from(onlineUsers.keys()));
-    io.emit('getOnlineUsers', Array.from(onlineUsers.values()));
+
+    // ✅ TỐI ƯU HÓA DỮ LIỆU ONLINE USERS
+    const optimizedUsers = Array.from(onlineUsers.values()).map(user => ({
+      id: user.userId,
+      name: user.userName,
+      role: user.role,
+      isOnline: true
+    }));
+
+    io.emit('getOnlineUsers', optimizedUsers);
   });
 
-  // Gửi tin nhắn
+  // Gửi tin nhắn với OPTIMIZATION
   socket.on('sendMessage', async (messageData) => {
     try {
-      console.log('📨 New message received:', messageData);
+      console.log('📨 New message received from:', messageData.senderId);
 
       const ChatService = require('./services/ChatService');
       const savedMessage = await ChatService.saveMessage(messageData);
 
       console.log('💾 Message saved:', savedMessage._id);
 
-      // === Xử lý gửi tin nhắn ===
+      // ✅ TỐI ƯU HÓA TIN NHẮN TRƯỚC KHI GỬI
+      const optimizedMessage = {
+        _id: savedMessage._id.toString(),
+        senderId: savedMessage.senderId,
+        receiverId: savedMessage.receiverId,
+        message: savedMessage.message,
+        timestamp: savedMessage.timestamp,
+        isRead: savedMessage.isRead || false
+      };
+
+      // Xử lý gửi tin nhắn
       if (messageData.receiverId === 'admin') {
-        // User gửi → tìm admin trong onlineUsers (Map)
         let adminFound = false;
         for (let [userId, userInfo] of onlineUsers) {
           if (userInfo.role === 'admin') {
-            io.to(userInfo.socketId).emit('receiveMessage', savedMessage);
+            io.to(userInfo.socketId).emit('receiveMessage', optimizedMessage);
             console.log('📤 Sent to admin:', userId);
             adminFound = true;
           }
@@ -228,10 +257,9 @@ io.on('connection', (socket) => {
           console.log('⚠️ No admin online, message stored only.');
         }
       } else {
-        // Admin gửi → tìm user cụ thể
         const userReceiver = onlineUsers.get(messageData.receiverId);
         if (userReceiver) {
-          io.to(userReceiver.socketId).emit('receiveMessage', savedMessage);
+          io.to(userReceiver.socketId).emit('receiveMessage', optimizedMessage);
           console.log('📤 Sent to user:', messageData.receiverId);
         } else {
           console.log('⚠️ User not online, message stored only.');
@@ -242,21 +270,11 @@ io.on('connection', (socket) => {
       socket.emit('messageSent', {
         status: 'success',
         messageId: savedMessage._id,
-        message: savedMessage
+        message: optimizedMessage // ✅ Gửi message đã optimize
       });
 
-      // === Cập nhật danh sách conversation cho admin ===
-      const { Conversation } = require('./models/ChatModel');
-      const conversations = await Conversation.find({ isActive: true })
-        .sort({ lastMessageTime: -1 });
-
-      // Gửi update đến tất cả admin
-      for (let [userId, userInfo] of onlineUsers) {
-        if (userInfo.role === 'admin') {
-          io.to(userInfo.socketId).emit('conversationsList', conversations);
-          console.log('🔄 Sent updated conversations to admin:', userId);
-        }
-      }
+      // ✅ CẬP NHẬT CONVERSATIONS VỚI DỮ LIỆU TỐI ƯU
+      await updateConversationsForAdmins();
 
     } catch (error) {
       console.error('❌ Error sending message:', error);
@@ -264,29 +282,64 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Lấy lịch sử chat
+  // Lấy lịch sử chat với OPTIMIZATION
   socket.on('getChatHistory', async (userId) => {
     try {
       const ChatService = require('./services/ChatService');
       const messages = await ChatService.getMessages(userId, 'admin');
-      socket.emit('chatHistory', messages);
-      console.log('📚 Sent chat history for user:', userId, 'Messages:', messages.length);
+
+      // ✅ TỐI ƯU HÓA LỊCH SỬ CHAT
+      const optimizedMessages = optimizeMessages(messages);
+
+      console.log('📚 Sent chat history for user:', userId, 'Messages:', optimizedMessages.length);
+
+      // ✅ KIỂM TRA KÍCH THƯỚC TRƯỚC KHI GỬI
+      const dataSize = Buffer.from(JSON.stringify(optimizedMessages)).length;
+      console.log('📏 Chat history size:', dataSize, 'bytes');
+
+      if (dataSize > 500000) { // 500KB
+        console.warn('⚠️ Chat history large, consider pagination');
+        // Có thể cắt bớt messages nếu cần
+        const limitedMessages = optimizedMessages.slice(-50); // Giữ 50 tin nhắn gần nhất
+        socket.emit('chatHistory', limitedMessages);
+      } else {
+        socket.emit('chatHistory', optimizedMessages);
+      }
+
     } catch (error) {
       console.error('❌ Error getting chat history:', error);
       socket.emit('chatHistoryError', { error: error.message });
     }
   });
 
-  // Lấy conversations cho admin
+  // Lấy conversations với OPTIMIZATION
   socket.on('getConversations', async () => {
     try {
       const { Conversation } = require('./models/ChatModel');
       const conversations = await Conversation.find({ isActive: true })
         .sort({ lastMessageTime: -1 })
-        .populate('userId', 'name email avatar');
+        .limit(100) // ✅ GIỚI HẠN SỐ LƯỢNG
+        .populate('userId', 'name email avatar')
+        .lean(); // ✅ SỬ DỤNG LEAN ĐỂ GIẢM KÍCH THƯỚC
 
-      console.log('📞 Sending conversations:', conversations.length);
-      socket.emit('conversationsList', conversations);
+      console.log('📞 Found conversations:', conversations.length);
+
+      // ✅ TỐI ƯU HÓA DỮ LIỆU CONVERSATIONS
+      const optimizedConversations = optimizeConversations(conversations);
+
+      // ✅ KIỂM TRA KÍCH THƯỚC TRƯỚC KHI GỬI
+      const dataSize = Buffer.from(JSON.stringify(optimizedConversations)).length;
+      console.log('📏 Conversations data size:', dataSize, 'bytes');
+
+      if (dataSize > 100000) { // 100KB
+        console.warn('⚠️ Conversations data large, truncating...');
+        // Cắt bớt nếu quá lớn
+        const limitedConversations = optimizedConversations.slice(0, 50); // Giữ 50 conversations đầu
+        socket.emit('conversationsList', limitedConversations);
+      } else {
+        socket.emit('conversationsList', optimizedConversations);
+      }
+
     } catch (error) {
       console.error('❌ Error getting conversations:', error);
       socket.emit('conversationsError', { error: error.message });
@@ -299,22 +352,13 @@ io.on('connection', (socket) => {
       console.log('📖 Marking messages as read for user:', userId);
       const ChatService = require('./services/ChatService');
 
-      // Đánh dấu tin nhắn đã đọc
       await ChatService.markMessagesAsRead(userId);
-
-      // Cập nhật unread count
       await ChatService.updateConversationUnreadCount(userId);
 
-      // Gửi confirmation
       socket.emit('messagesRead', { userId, success: true });
 
-      // Cập nhật danh sách conversations
-      const { Conversation } = require('./models/ChatModel');
-      const conversations = await Conversation.find({ isActive: true })
-        .sort({ lastMessageTime: -1 })
-        .populate('userId', 'name email avatar');
-
-      socket.emit('conversationsList', conversations);
+      // ✅ CẬP NHẬT VỚI DỮ LIỆU TỐI ƯU
+      await updateConversationsForAdmins();
 
     } catch (error) {
       console.error('❌ Error marking messages as read:', error);
@@ -329,17 +373,16 @@ io.on('connection', (socket) => {
       const ChatService = require('./services/ChatService');
       const { Conversation } = require('./models/ChatModel');
 
-      // Lấy tất cả conversations
       const conversations = await Conversation.find({ isActive: true });
-
-      // Đánh dấu tất cả tin nhắn là đã đọc
       for (const conversation of conversations) {
         await ChatService.markMessagesAsRead(conversation.userId);
         await ChatService.updateConversationUnreadCount(conversation.userId);
       }
 
       socket.emit('allMessagesRead', { success: true });
-      socket.emit('conversationsUpdated');
+
+      // ✅ CẬP NHẬT VỚI DỮ LIỆU TỐI ƯU
+      await updateConversationsForAdmins();
 
     } catch (error) {
       console.error('❌ Error marking all messages as read:', error);
@@ -347,9 +390,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Ping-pong để giữ kết nối
+  socket.on('ping', (cb) => {
+    if (typeof cb === 'function') {
+      cb('pong');
+    }
+  });
+
   // Ngắt kết nối
-  socket.on('disconnect', () => {
-    console.log('🔴 User disconnected:', socket.id);
+  socket.on('disconnect', (reason) => {
+    console.log('🔴 User disconnected:', socket.id, 'Reason:', reason);
 
     for (let [userId, user] of onlineUsers.entries()) {
       if (user.socketId === socket.id) {
@@ -359,7 +409,15 @@ io.on('connection', (socket) => {
       }
     }
 
-    io.emit('getOnlineUsers', Array.from(onlineUsers.values()));
+    // ✅ CẬP NHẬT ONLINE USERS VỚI DỮ LIỆU TỐI ƯU
+    const optimizedUsers = Array.from(onlineUsers.values()).map(user => ({
+      id: user.userId,
+      name: user.userName,
+      role: user.role,
+      isOnline: true
+    }));
+
+    io.emit('getOnlineUsers', optimizedUsers);
   });
 
   socket.on('error', (error) => {
@@ -367,7 +425,32 @@ io.on('connection', (socket) => {
   });
 });
 
-// Connect DB với config linh hoạt
+// ✅ HÀM CẬP NHẬT CONVERSATIONS CHO ADMINS
+async function updateConversationsForAdmins() {
+  try {
+    const { Conversation } = require('./models/ChatModel');
+    const conversations = await Conversation.find({ isActive: true })
+      .sort({ lastMessageTime: -1 })
+      .limit(100)
+      .populate('userId', 'name email avatar')
+      .lean();
+
+    const optimizedConversations = optimizeConversations(conversations);
+
+    // Gửi đến tất cả admin
+    for (let [userId, userInfo] of onlineUsers) {
+      if (userInfo.role === 'admin') {
+        io.to(userInfo.socketId).emit('conversationsList', optimizedConversations);
+      }
+    }
+
+    console.log('🔄 Updated conversations for admins');
+  } catch (error) {
+    console.error('❌ Error updating conversations:', error);
+  }
+}
+
+// Connect DB
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGO_DB;
@@ -382,7 +465,6 @@ const connectDB = async () => {
     console.log('✅ Connect DB success');
   } catch (err) {
     console.log('❌ DB connection error:', err);
-    // Thử kết nối lại sau 5 giây
     setTimeout(connectDB, 5000);
   }
 };
@@ -410,9 +492,8 @@ process.on('uncaughtException', (err) => {
 server.listen(port, () => {
   console.log(`🚀 Server is running on port ${port}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`💬 Socket.io is ready for connections`);
+  console.log(`💬 Socket.io config: maxHttpBufferSize=10MB`);
   console.log(`✅ Allowed origins:`, allowedOrigins);
-  console.log(`🌐 Vercel domains: *.vercel.app, *.now.sh`);
 });
 
 module.exports = { app, io, server };
