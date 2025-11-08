@@ -1,4 +1,4 @@
-// services/ChatService.js - FIX LỖI LƯU TIN NHẮN
+// services/ChatService.js - FIX LỖI HIỂN THỊ TIN NHẮN MỚI
 const mongoose = require('mongoose');
 const { Message, Conversation } = require('../models/ChatModel');
 
@@ -12,7 +12,7 @@ const ChatService = {
                 timestamp: messageData.timestamp
             });
 
-            // ✅ FIX: TẠO MESSAGE MỚI VỚI DỮ LIỆU ĐẦY ĐỦ
+            // ✅ FIX: TẠO MESSAGE MỚI
             const message = new Message({
                 senderId: messageData.senderId,
                 receiverId: messageData.receiverId,
@@ -24,15 +24,13 @@ const ChatService = {
             const savedMessage = await message.save();
             console.log('✅ Message saved to DB:', savedMessage._id);
 
-            // ✅ FIX: LUÔN CẬP NHẬT CONVERSATION CHO CẢ 2 TRƯỜNG HỢP
+            // ✅ FIX: CẬP NHẬT CONVERSATION
             let targetUserId = null;
             let realUserName = 'Khách hàng';
 
             if (messageData.receiverId === 'admin') {
-                // Tin nhắn từ user gửi đến admin
                 targetUserId = messageData.senderId;
             } else if (messageData.senderId === 'admin') {
-                // Tin nhắn từ admin gửi đến user
                 targetUserId = messageData.receiverId;
             }
 
@@ -44,15 +42,11 @@ const ChatService = {
                         realUserName = user.fullName || user.name || user.username ||
                             user.displayName || user.email?.split('@')[0] ||
                             `User_${targetUserId.substring(targetUserId.length - 6)}`;
-                    } else {
-                        realUserName = `User_${targetUserId.substring(targetUserId.length - 6)}`;
                     }
                 } catch (error) {
                     console.log('❌ Error getting user info:', error.message);
-                    realUserName = `User_${targetUserId.substring(targetUserId.length - 6)}`;
                 }
 
-                // ✅ FIX: CẬP NHẬT CONVERSATION VỚI TÊN THẬT
                 const updateData = {
                     userId: targetUserId,
                     userName: realUserName,
@@ -61,11 +55,8 @@ const ChatService = {
                     isActive: true
                 };
 
-                // Chỉ tăng unreadCount nếu tin nhắn từ user (không phải admin)
                 if (messageData.senderId !== 'admin') {
                     updateData.$inc = { unreadCount: 1 };
-                } else {
-                    updateData.unreadCount = 0; // Admin gửi thì reset unreadCount
                 }
 
                 await Conversation.findOneAndUpdate(
@@ -74,7 +65,7 @@ const ChatService = {
                     { upsert: true, new: true }
                 );
 
-                console.log('📝 Conversation updated for user:', targetUserId, 'Name:', realUserName);
+                console.log('📝 Conversation updated:', realUserName);
             }
 
             return savedMessage;
@@ -85,31 +76,32 @@ const ChatService = {
         }
     },
 
-    getMessages: async (userId, targetId, limit = 100) => {
+    getMessages: async (userId, targetId, limit = 200) => {
         try {
             console.log('🔍 Getting messages between:', userId, 'and', targetId);
 
+            // ✅ FIX QUAN TRỌNG: SORT THEO THỜI GIAN MỚI NHẤT VÀ TĂNG LIMIT
             const messages = await Message.find({
                 $or: [
                     { senderId: userId, receiverId: targetId },
                     { senderId: targetId, receiverId: userId }
                 ]
             })
-                .sort({ timestamp: 1 })
+                .sort({ timestamp: -1 }) // ✅ FIX: SORT MỚI NHẤT TRƯỚC
                 .limit(limit)
                 .lean();
 
             console.log('📨 Retrieved messages count:', messages.length);
 
-            // ✅ FIX: LOG CHI TIẾT ĐỂ DEBUG
-            if (messages.length > 0) {
-                console.log('📝 Latest messages:');
-                messages.slice(-5).forEach((msg, index) => {
-                    console.log(`  ${index + 1}. [${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.senderId}: ${msg.message}`);
-                });
-            }
+            // ✅ FIX: LOG TẤT CẢ TIN NHẮN ĐỂ DEBUG
+            console.log('📝 ALL MESSAGES IN DB:');
+            messages.forEach((msg, index) => {
+                console.log(`  ${index + 1}. [${new Date(msg.timestamp).toLocaleString('vi-VN')}] ${msg.senderId}: ${msg.message.substring(0, 50)}${msg.message.length > 50 ? '...' : ''}`);
+            });
 
-            return messages;
+            // ✅ FIX: TRẢ VỀ THEO THỨ TỰ CŨ → MỚI ĐỂ HIỂN THỊ ĐÚNG
+            return messages.reverse();
+
         } catch (error) {
             console.error('❌ Error getting messages:', error);
             throw new Error(error.message);
@@ -163,6 +155,33 @@ const ChatService = {
             return unreadCount;
         } catch (error) {
             console.error('❌ Error updating unread count:', error);
+            throw new Error(error.message);
+        }
+    },
+
+    // ✅ THÊM HÀM MỚI: Lấy tin nhắn mới nhất
+    getRecentMessages: async (userId, targetId, since = null) => {
+        try {
+            let query = {
+                $or: [
+                    { senderId: userId, receiverId: targetId },
+                    { senderId: targetId, receiverId: userId }
+                ]
+            };
+
+            if (since) {
+                query.timestamp = { $gt: since };
+            }
+
+            const messages = await Message.find(query)
+                .sort({ timestamp: 1 }) // Cũ → mới để hiển thị
+                .limit(100)
+                .lean();
+
+            console.log('🆕 Recent messages since', since, ':', messages.length);
+            return messages;
+        } catch (error) {
+            console.error('❌ Error getting recent messages:', error);
             throw new Error(error.message);
         }
     }
