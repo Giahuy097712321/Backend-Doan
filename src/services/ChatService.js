@@ -1,12 +1,18 @@
-// services/ChatService.js - FIX LỖI mongoose is not defined
-const mongoose = require('mongoose'); // ✅ THÊM DÒNG NÀY
+// services/ChatService.js - FIX LỖI LƯU TIN NHẮN
+const mongoose = require('mongoose');
 const { Message, Conversation } = require('../models/ChatModel');
 
 const ChatService = {
     saveMessage: async (messageData) => {
         try {
-            console.log('💾 Saving message:', messageData);
+            console.log('💾 Saving message:', {
+                senderId: messageData.senderId,
+                receiverId: messageData.receiverId,
+                message: messageData.message,
+                timestamp: messageData.timestamp
+            });
 
+            // ✅ FIX: TẠO MESSAGE MỚI VỚI DỮ LIỆU ĐẦY ĐỦ
             const message = new Message({
                 senderId: messageData.senderId,
                 receiverId: messageData.receiverId,
@@ -18,70 +24,57 @@ const ChatService = {
             const savedMessage = await message.save();
             console.log('✅ Message saved to DB:', savedMessage._id);
 
-            // ✅ FIX: LUÔN CẬP NHẬT CONVERSATION VỚI TÊN THẬT
-            if (messageData.receiverId === 'admin' && messageData.senderId !== 'admin') {
-                let realUserName = 'Khách hàng';
+            // ✅ FIX: LUÔN CẬP NHẬT CONVERSATION CHO CẢ 2 TRƯỜNG HỢP
+            let targetUserId = null;
+            let realUserName = 'Khách hàng';
 
-                try {
-                    const User = mongoose.model('User');
-                    const user = await User.findById(messageData.senderId);
-                    if (user) {
-                        realUserName = user.fullName || user.name || user.username ||
-                            user.displayName || user.email?.split('@')[0] ||
-                            `User_${messageData.senderId.substring(messageData.senderId.length - 6)}`;
-                    }
-                } catch (error) {
-                    console.log('❌ Error getting user info:', error);
-                    // Fallback an toàn
-                    realUserName = `User_${messageData.senderId.substring(messageData.senderId.length - 6)}`;
-                }
-
-                await Conversation.findOneAndUpdate(
-                    { userId: messageData.senderId },
-                    {
-                        userId: messageData.senderId,
-                        userName: realUserName, // ✅ LUÔN DÙNG TÊN THẬT
-                        lastMessage: messageData.message,
-                        lastMessageTime: messageData.timestamp || new Date(),
-                        $inc: { unreadCount: 1 },
-                        isActive: true
-                    },
-                    { upsert: true, new: true }
-                );
-
-                console.log('📝 Conversation updated with real name:', realUserName);
+            if (messageData.receiverId === 'admin') {
+                // Tin nhắn từ user gửi đến admin
+                targetUserId = messageData.senderId;
+            } else if (messageData.senderId === 'admin') {
+                // Tin nhắn từ admin gửi đến user
+                targetUserId = messageData.receiverId;
             }
-            // ✅ FIX: CẬP NHẬT KHI ADMIN GỬI TIN NHẮN
-            else if (messageData.senderId === 'admin') {
-                let realUserName = 'Khách hàng';
 
+            if (targetUserId && targetUserId !== 'admin') {
                 try {
                     const User = mongoose.model('User');
-                    const user = await User.findById(messageData.receiverId);
+                    const user = await User.findById(targetUserId);
                     if (user) {
                         realUserName = user.fullName || user.name || user.username ||
                             user.displayName || user.email?.split('@')[0] ||
-                            `User_${messageData.receiverId.substring(messageData.receiverId.length - 6)}`;
+                            `User_${targetUserId.substring(targetUserId.length - 6)}`;
+                    } else {
+                        realUserName = `User_${targetUserId.substring(targetUserId.length - 6)}`;
                     }
                 } catch (error) {
-                    console.log('❌ Error getting user info for admin message:', error);
-                    realUserName = `User_${messageData.receiverId.substring(messageData.receiverId.length - 6)}`;
+                    console.log('❌ Error getting user info:', error.message);
+                    realUserName = `User_${targetUserId.substring(targetUserId.length - 6)}`;
+                }
+
+                // ✅ FIX: CẬP NHẬT CONVERSATION VỚI TÊN THẬT
+                const updateData = {
+                    userId: targetUserId,
+                    userName: realUserName,
+                    lastMessage: messageData.message,
+                    lastMessageTime: messageData.timestamp || new Date(),
+                    isActive: true
+                };
+
+                // Chỉ tăng unreadCount nếu tin nhắn từ user (không phải admin)
+                if (messageData.senderId !== 'admin') {
+                    updateData.$inc = { unreadCount: 1 };
+                } else {
+                    updateData.unreadCount = 0; // Admin gửi thì reset unreadCount
                 }
 
                 await Conversation.findOneAndUpdate(
-                    { userId: messageData.receiverId },
-                    {
-                        userId: messageData.receiverId,
-                        userName: realUserName,
-                        lastMessage: messageData.message,
-                        lastMessageTime: messageData.timestamp || new Date(),
-                        unreadCount: 0, // Admin gửi thì không tăng unreadCount
-                        isActive: true
-                    },
+                    { userId: targetUserId },
+                    updateData,
                     { upsert: true, new: true }
                 );
 
-                console.log('📝 Conversation updated for admin message:', realUserName);
+                console.log('📝 Conversation updated for user:', targetUserId, 'Name:', realUserName);
             }
 
             return savedMessage;
@@ -94,6 +87,8 @@ const ChatService = {
 
     getMessages: async (userId, targetId, limit = 100) => {
         try {
+            console.log('🔍 Getting messages between:', userId, 'and', targetId);
+
             const messages = await Message.find({
                 $or: [
                     { senderId: userId, receiverId: targetId },
@@ -105,6 +100,15 @@ const ChatService = {
                 .lean();
 
             console.log('📨 Retrieved messages count:', messages.length);
+
+            // ✅ FIX: LOG CHI TIẾT ĐỂ DEBUG
+            if (messages.length > 0) {
+                console.log('📝 Latest messages:');
+                messages.slice(-5).forEach((msg, index) => {
+                    console.log(`  ${index + 1}. [${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.senderId}: ${msg.message}`);
+                });
+            }
+
             return messages;
         } catch (error) {
             console.error('❌ Error getting messages:', error);
@@ -159,22 +163,6 @@ const ChatService = {
             return unreadCount;
         } catch (error) {
             console.error('❌ Error updating unread count:', error);
-            throw new Error(error.message);
-        }
-    },
-
-    // ✅ THÊM HÀM MỚI: Lấy conversations với real-time data
-    getConversationsWithRealNames: async () => {
-        try {
-            const conversations = await Conversation.find({ isActive: true })
-                .sort({ lastMessageTime: -1 })
-                .limit(100)
-                .lean();
-
-            console.log('📞 Raw conversations from DB:', conversations.length);
-            return conversations;
-        } catch (error) {
-            console.error('❌ Error getting conversations:', error);
             throw new Error(error.message);
         }
     }
