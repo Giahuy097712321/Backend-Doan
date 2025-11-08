@@ -176,6 +176,8 @@ function optimizeConversations(conversations) {
     _id: conv._id?.toString(),
     userId: conv.userId?._id?.toString() || conv.userId?.toString(),
     userName: conv.userId?.name || 'Người dùng',
+    userAvatar: conv.userId?.avatar, // ✅ THÊM AVATAR
+    userEmail: conv.userId?.email,
     lastMessage: conv.lastMessage ?
       (conv.lastMessage.length > 100 ?
         conv.lastMessage.substring(0, 100) + '...' :
