@@ -56,14 +56,14 @@ const ChatService = {
         }
     },
 
-    getMessages: async (userId, targetId) => {
+    getMessages: async (userId, targetId, limit = 100) => {
         try {
             const messages = await Message.find({
                 $or: [
                     { senderId: userId, receiverId: targetId },
                     { senderId: targetId, receiverId: userId }
                 ]
-            }).sort({ timestamp: 1 });
+            }).sort({ timestamp: 1 }).limit(limit).lean();
 
             console.log('📨 Retrieved messages count:', messages.length);
             return messages;
