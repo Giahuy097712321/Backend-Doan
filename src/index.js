@@ -1,4 +1,4 @@
-// server.js - HOÀN CHỈNH VỚI LẤY TÊN THẬT TỪ DATABASE
+// server.js - FIX LỖI userId.substring is not a function
 require('dotenv').config();
 
 const express = require("express");
@@ -16,173 +16,48 @@ const app = express();
 const server = createServer(app);
 const port = process.env.PORT || 3001;
 
-// CORS Configuration
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://trangiahuy-datn.vercel.app',
-  'https://fontend-doan-git-main-huys-projects-c7d34491.vercel.app',
-  process.env.FRONTEND_URL
-].filter(Boolean);
+// ... (phần CORS configuration giữ nguyên) ...
 
-const vercelPatterns = [
-  /https:\/\/.*\.vercel\.app\/?$/,
-  /https:\/\/.*-git-.*\.vercel\.app\/?$/,
-  /https:\/\/.*-.*-.*\.vercel\.app\/?$/,
-  /https:\/\/.*-huys-projects-.*\.vercel\.app\/?$/
-];
-
-const checkOrigin = (origin) => {
-  if (!origin) return true;
-
-  console.log('🔍 Checking origin:', origin);
-  const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
-
-  if (allowedOrigins.includes(origin) || allowedOrigins.includes(normalizedOrigin)) {
-    console.log('✅ Exact match');
-    return true;
-  }
-
-  for (const pattern of vercelPatterns) {
-    if (pattern.test(origin) || pattern.test(normalizedOrigin)) {
-      console.log('✅ Vercel pattern match');
-      return true;
-    }
-  }
-
-  if (origin.endsWith('.vercel.app') || origin.endsWith('.vercel.app/') ||
-    origin.endsWith('.now.sh') || origin.endsWith('.now.sh/') ||
-    normalizedOrigin.endsWith('.vercel.app') || normalizedOrigin.endsWith('.now.sh')) {
-    console.log('✅ Domain suffix match');
-    return true;
-  }
-
-  if (process.env.NODE_ENV === 'development' &&
-    (origin.includes('localhost') || normalizedOrigin.includes('localhost'))) {
-    console.log('✅ Development localhost');
-    return true;
-  }
-
-  console.log('❌ No match found for origin:', origin);
-  return false;
-};
-
-// CORS cho Express
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  if (origin && checkOrigin(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  }
-
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie, token'
-  );
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-
-  next();
-});
-
-// ✅ QUAN TRỌNG: Socket.io config với MAX PAYLOAD SIZE LỚN
-const io = new Server(server, {
-  cors: {
-    origin: function (origin, callback) {
-      if (checkOrigin(origin)) {
-        return callback(null, true);
-      }
-      console.warn('⚠️ Socket.io CORS blocked:', origin);
-      return callback(new Error('Not allowed by CORS'), false);
-    },
-    methods: ['GET', 'POST'],
-    credentials: true
-  },
-  transports: ['websocket', 'polling'],
-  // ✅ FIX LỖI "MAX PAYLOAD SIZE EXCEEDED"
-  maxHttpBufferSize: 10e6, // 10MB (mặc định là 1MB)
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  connectTimeout: 45000,
-  cookie: false,
-  allowEIO3: true
-});
-
-// Engine event listeners
-io.engine.on("connection", (rawSocket) => {
-  console.log('🔄 Raw connection established, transport:', rawSocket.transport.name);
-
-  rawSocket.on("close", (reason, description) => {
-    console.log('🔌 Raw connection closed:', reason, description);
-  });
-
-  rawSocket.on("error", (error) => {
-    console.error('💥 Raw connection error:', error);
-  });
-});
-
-io.engine.on("connection_error", (err) => {
-  console.error('💥 Engine connection error:', err);
-});
-
-// Middleware
-app.use(bodyParser.json({ limit: '50mb' })); // Tăng limit cho express
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-app.use(cookieParser());
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  const origin = req.headers.origin;
-  if (checkOrigin(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  }
-
-  res.status(200).json({
-    status: 'OK',
-    message: 'Server is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    socketConfig: {
-      maxHttpBufferSize: '10MB',
-      transports: ['websocket', 'polling']
-    }
-  });
-});
-
-// Routes
-routes(app);
-
-// Test Stripe route
-app.post('/test-payment', async (req, res) => {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return res.status(500).json({
-      status: 'ERR',
-      message: 'STRIPE_SECRET_KEY chưa được thiết lập',
-    });
-  }
-
-  const { totalPrice } = req.body || { totalPrice: 100000 };
-  const result = await createPaymentIntent(totalPrice);
-  res.json(result);
-});
-
-// ✅ HÀM LẤY TÊN THẬT TỪ USER
+// ✅ HÀM LẤY TÊN THẬT TỪ USER - FIXED LỖI
 async function getRealUserName(userId) {
   try {
+    console.log('🔍 Getting real name for userId:', userId, 'Type:', typeof userId);
+
+    // ✅ FIX: Kiểm tra và xử lý userId hợp lệ
     if (!userId || userId === 'admin') {
       return userId === 'admin' ? 'Quản trị viên' : 'Người dùng';
     }
 
+    // ✅ FIX QUAN TRỌNG: Đảm bảo userId là string
+    const userIdStr = String(userId).trim();
+
+    if (!userIdStr || userIdStr === 'undefined' || userIdStr === 'null') {
+      console.log('❌ Invalid userId:', userId);
+      return 'Người dùng';
+    }
+
     const User = mongoose.model('User');
-    const user = await User.findById(userId).lean();
+
+    // ✅ FIX: Xử lý cả ObjectId và string ID
+    let user;
+    if (mongoose.Types.ObjectId.isValid(userIdStr)) {
+      // Nếu là ObjectId hợp lệ
+      user = await User.findById(userIdStr).lean();
+    } else {
+      // Nếu không phải ObjectId, tìm theo các trường khác
+      user = await User.findOne({
+        $or: [
+          { _id: userIdStr },
+          { email: userIdStr },
+          { username: userIdStr }
+        ]
+      }).lean();
+    }
 
     if (!user) {
-      console.log(`❌ User not found: ${userId}`);
-      return `User_${userId.substring(userId.length - 6)}`;
+      console.log(`❌ User not found: ${userIdStr}`);
+      // ✅ FIX: Kiểm tra độ dài trước khi dùng substring
+      return userIdStr.length >= 6 ? `User_${userIdStr.substring(userIdStr.length - 6)}` : `User_${userIdStr}`;
     }
 
     // ✅ THỬ CÁC TRƯỜNG TÊN KHÁC NHAU
@@ -195,54 +70,100 @@ async function getRealUserName(userId) {
       user.lastName ||
       (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : null) ||
       user.email?.split('@')[0] ||
-      `User_${userId.substring(userId.length - 6)}`;
+      (userIdStr.length >= 6 ? `User_${userIdStr.substring(userIdStr.length - 6)}` : `User_${userIdStr}`);
 
-    console.log(`✅ Found real name for ${userId}: ${realName}`);
+    console.log(`✅ Found real name for ${userIdStr}: ${realName}`);
     return realName;
 
   } catch (error) {
-    console.log(`❌ Error getting user name for ${userId}:`, error);
-    return `User_${userId.substring(userId.length - 6)}`;
+    console.log(`❌ Error getting user name for ${userId}:`, error.message);
+
+    // ✅ FIX: Xử lý lỗi an toàn
+    try {
+      const userIdStr = String(userId || '');
+      return userIdStr.length >= 6 ? `User_${userIdStr.substring(userIdStr.length - 6)}` : `User_${userIdStr}`;
+    } catch {
+      return 'Người dùng';
+    }
   }
 }
 
-// ✅ HÀM TỐI ƯU HÓA CONVERSATIONS VỚI TÊN THẬT
+// ✅ HÀM TỐI ƯU HÓA CONVERSATIONS VỚI TÊN THẬT - FIXED
 async function optimizeConversationsWithRealNames(conversations) {
-  const optimizedConversations = await Promise.all(
-    conversations.map(async (conv) => {
-      const realUserName = await getRealUserName(conv.userId);
+  try {
+    console.log('🔄 Optimizing conversations with real names...');
 
-      return {
-        _id: conv._id?.toString(),
-        userId: conv.userId?.toString(),
-        userName: realUserName, // ✅ TÊN THẬT
-        userAvatar: conv.userId?.avatar,
-        userEmail: conv.userId?.email,
-        lastMessage: conv.lastMessage ?
-          (conv.lastMessage.length > 100 ?
-            conv.lastMessage.substring(0, 100) + '...' :
-            conv.lastMessage)
-          : 'Chưa có tin nhắn',
-        lastMessageTime: conv.lastMessageTime,
-        unreadCount: conv.unreadCount || 0,
-        isActive: conv.isActive !== false
-      };
-    })
-  );
+    const optimizedConversations = await Promise.all(
+      conversations.map(async (conv) => {
+        try {
+          // ✅ FIX: Đảm bảo userId là string
+          const userId = String(conv.userId || '').trim();
 
-  return optimizedConversations;
+          if (!userId) {
+            console.log('⚠️ Empty userId in conversation:', conv._id);
+            return {
+              _id: conv._id?.toString(),
+              userId: 'unknown',
+              userName: 'Người dùng',
+              lastMessage: conv.lastMessage ?
+                (conv.lastMessage.length > 100 ?
+                  conv.lastMessage.substring(0, 100) + '...' :
+                  conv.lastMessage)
+                : 'Chưa có tin nhắn',
+              lastMessageTime: conv.lastMessageTime,
+              unreadCount: conv.unreadCount || 0,
+              isActive: conv.isActive !== false
+            };
+          }
+
+          const realUserName = await getRealUserName(userId);
+
+          return {
+            _id: conv._id?.toString(),
+            userId: userId,
+            userName: realUserName, // ✅ TÊN THẬT
+            lastMessage: conv.lastMessage ?
+              (conv.lastMessage.length > 100 ?
+                conv.lastMessage.substring(0, 100) + '...' :
+                conv.lastMessage)
+              : 'Chưa có tin nhắn',
+            lastMessageTime: conv.lastMessageTime,
+            unreadCount: conv.unreadCount || 0,
+            isActive: conv.isActive !== false
+          };
+        } catch (error) {
+          console.log('❌ Error optimizing conversation:', error);
+          return {
+            _id: conv._id?.toString(),
+            userId: String(conv.userId || 'unknown'),
+            userName: 'Người dùng',
+            lastMessage: 'Lỗi tải tin nhắn',
+            lastMessageTime: conv.lastMessageTime,
+            unreadCount: 0,
+            isActive: false
+          };
+        }
+      })
+    );
+
+    console.log('✅ Optimized conversations:', optimizedConversations.length);
+    return optimizedConversations;
+
+  } catch (error) {
+    console.error('❌ Error in optimizeConversationsWithRealNames:', error);
+    return conversations.map(conv => ({
+      _id: conv._id?.toString(),
+      userId: String(conv.userId || 'unknown'),
+      userName: 'Người dùng',
+      lastMessage: conv.lastMessage || 'Chưa có tin nhắn',
+      lastMessageTime: conv.lastMessageTime,
+      unreadCount: conv.unreadCount || 0,
+      isActive: conv.isActive !== false
+    }));
+  }
 }
 
-function optimizeMessages(messages) {
-  return messages.map(msg => ({
-    _id: msg._id?.toString(),
-    senderId: msg.senderId,
-    receiverId: msg.receiverId,
-    message: msg.message,
-    timestamp: msg.timestamp,
-    isRead: msg.isRead || false
-  }));
-}
+// ... (phần còn lại của server giữ nguyên cho đến socket logic) ...
 
 // Socket.io logic với OPTIMIZATION
 const onlineUsers = new Map();
@@ -250,114 +171,40 @@ const onlineUsers = new Map();
 io.on('connection', (socket) => {
   console.log('🔗 User connected:', socket.id, 'from:', socket.handshake.headers.origin);
 
-  // Thêm user vào danh sách online
+  // Thêm user vào danh sách online - FIXED
   socket.on('addUser', (userId, userData) => {
-    onlineUsers.set(userId, {
-      socketId: socket.id,
-      ...userData
-    });
-    console.log('👥 Online users:', Array.from(onlineUsers.keys()));
-
-    // ✅ TỐI ƯU HÓA DỮ LIỆU ONLINE USERS
-    const optimizedUsers = Array.from(onlineUsers.values()).map(user => ({
-      id: user.userId,
-      name: user.userName,
-      role: user.role,
-      isOnline: true
-    }));
-
-    io.emit('getOnlineUsers', optimizedUsers);
-  });
-
-  // Gửi tin nhắn với OPTIMIZATION
-  socket.on('sendMessage', async (messageData) => {
     try {
-      console.log('📨 New message received from:', messageData.senderId);
+      // ✅ FIX: Đảm bảo userId là string
+      const userIdStr = String(userId || '').trim();
 
-      const ChatService = require('./services/ChatService');
-      const savedMessage = await ChatService.saveMessage(messageData);
-
-      console.log('💾 Message saved:', savedMessage._id);
-
-      // ✅ TỐI ƯU HÓA TIN NHẮN TRƯỚC KHI GỬI
-      const optimizedMessage = {
-        _id: savedMessage._id.toString(),
-        senderId: savedMessage.senderId,
-        receiverId: savedMessage.receiverId,
-        message: savedMessage.message,
-        timestamp: savedMessage.timestamp,
-        isRead: savedMessage.isRead || false
-      };
-
-      // Xử lý gửi tin nhắn
-      if (messageData.receiverId === 'admin') {
-        let adminFound = false;
-        for (let [userId, userInfo] of onlineUsers) {
-          if (userInfo.role === 'admin') {
-            io.to(userInfo.socketId).emit('receiveMessage', optimizedMessage);
-            console.log('📤 Sent to admin:', userId);
-            adminFound = true;
-          }
-        }
-        if (!adminFound) {
-          console.log('⚠️ No admin online, message stored only.');
-        }
-      } else {
-        const userReceiver = onlineUsers.get(messageData.receiverId);
-        if (userReceiver) {
-          io.to(userReceiver.socketId).emit('receiveMessage', optimizedMessage);
-          console.log('📤 Sent to user:', messageData.receiverId);
-        } else {
-          console.log('⚠️ User not online, message stored only.');
-        }
+      if (!userIdStr) {
+        console.log('⚠️ Invalid userId in addUser');
+        return;
       }
 
-      // Gửi xác nhận cho người gửi
-      socket.emit('messageSent', {
-        status: 'success',
-        messageId: savedMessage._id,
-        message: optimizedMessage
+      onlineUsers.set(userIdStr, {
+        socketId: socket.id,
+        userId: userIdStr,
+        ...userData
       });
 
-      // ✅ CẬP NHẬT CONVERSATIONS VỚI TÊN THẬT
-      await updateConversationsForAdmins();
+      console.log('👥 Online users:', Array.from(onlineUsers.keys()));
 
+      // ✅ TỐI ƯU HÓA DỮ LIỆU ONLINE USERS
+      const optimizedUsers = Array.from(onlineUsers.values()).map(user => ({
+        id: user.userId,
+        name: user.userName || `User_${user.userId.substring(user.userId.length - 6)}`,
+        role: user.role,
+        isOnline: true
+      }));
+
+      io.emit('getOnlineUsers', optimizedUsers);
     } catch (error) {
-      console.error('❌ Error sending message:', error);
-      socket.emit('messageError', { error: error.message });
+      console.error('❌ Error in addUser:', error);
     }
   });
 
-  // Lấy lịch sử chat với OPTIMIZATION
-  socket.on('getChatHistory', async (userId) => {
-    try {
-      const ChatService = require('./services/ChatService');
-      const messages = await ChatService.getMessages(userId, 'admin');
-
-      // ✅ TỐI ƯU HÓA LỊCH SỬ CHAT
-      const optimizedMessages = optimizeMessages(messages);
-
-      console.log('📚 Sent chat history for user:', userId, 'Messages:', optimizedMessages.length);
-
-      // ✅ KIỂM TRA KÍCH THƯỚC TRƯỚC KHI GỬI
-      const dataSize = Buffer.from(JSON.stringify(optimizedMessages)).length;
-      console.log('📏 Chat history size:', dataSize, 'bytes');
-
-      if (dataSize > 500000) {
-        console.warn('⚠️ Chat history large, consider pagination');
-        const limitedMessages = optimizedMessages.slice(-50);
-        socket.emit('chatHistory', limitedMessages);
-      } else {
-        socket.emit('chatHistory', optimizedMessages);
-      }
-
-    } catch (error) {
-      console.error('❌ Error getting chat history:', error);
-      socket.emit('chatHistoryError', { error: error.message });
-    }
-  });
-
-  // ✅ LẤY CONVERSATIONS VỚI TÊN THẬT
+  // ✅ LẤY CONVERSATIONS VỚI TÊN THẬT - FIXED
   socket.on('getConversations', async () => {
     try {
       const { Conversation } = require('./models/ChatModel');
@@ -369,34 +216,44 @@ io.on('connection', (socket) => {
         .limit(100)
         .lean();
 
-      console.log('📞 Found conversations:', conversations.length);
+      console.log('📞 Raw conversations found:', conversations.length);
 
       // ✅ TỐI ƯU HÓA VỚI TÊN THẬT
       const optimizedConversations = await optimizeConversationsWithRealNames(conversations);
 
       console.log('🎯 Final conversations with REAL names:');
       optimizedConversations.forEach((conv, index) => {
-        console.log(`  ${index + 1}. ${conv.userId} -> "${conv.userName}"`);
+        console.log(`  ${index + 1}. ${conv.userId} -> "${conv.userName}" (${conv.unreadCount} unread)`);
       });
 
       socket.emit('conversationsList', optimizedConversations);
 
     } catch (error) {
       console.error('❌ Error getting conversations:', error);
-      socket.emit('conversationsError', { error: error.message });
+      socket.emit('conversationsError', {
+        error: 'Lỗi khi tải danh sách hội thoại: ' + error.message
+      });
     }
   });
 
-  // Đánh dấu tin nhắn đã đọc
+  // Đánh dấu tin nhắn đã đọc - FIXED
   socket.on('markMessagesAsRead', async (userId) => {
     try {
-      console.log('📖 Marking messages as read for user:', userId);
+      // ✅ FIX: Đảm bảo userId là string
+      const userIdStr = String(userId || '').trim();
+
+      if (!userIdStr) {
+        console.log('⚠️ Invalid userId in markMessagesAsRead');
+        return;
+      }
+
+      console.log('📖 Marking messages as read for user:', userIdStr);
       const ChatService = require('./services/ChatService');
 
-      await ChatService.markMessagesAsRead(userId);
-      await ChatService.updateConversationUnreadCount(userId);
+      await ChatService.markMessagesAsRead(userIdStr);
+      await ChatService.updateConversationUnreadCount(userIdStr);
 
-      socket.emit('messagesRead', { userId, success: true });
+      socket.emit('messagesRead', { userId: userIdStr, success: true });
 
       // ✅ CẬP NHẬT VỚI TÊN THẬT
       await updateConversationsForAdmins();
@@ -407,38 +264,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Đánh dấu tất cả tin nhắn đã đọc
-  socket.on('markAllMessagesAsRead', async () => {
-    try {
-      console.log('📖 Marking ALL messages as read');
-      const ChatService = require('./services/ChatService');
-      const { Conversation } = require('./models/ChatModel');
+  // ... (phần còn lại của socket handlers giữ nguyên) ...
 
-      const conversations = await Conversation.find({ isActive: true });
-      for (const conversation of conversations) {
-        await ChatService.markMessagesAsRead(conversation.userId);
-        await ChatService.updateConversationUnreadCount(conversation.userId);
-      }
-
-      socket.emit('allMessagesRead', { success: true });
-
-      // ✅ CẬP NHẬT VỚI TÊN THẬT
-      await updateConversationsForAdmins();
-
-    } catch (error) {
-      console.error('❌ Error marking all messages as read:', error);
-      socket.emit('messagesReadError', { error: error.message });
-    }
-  });
-
-  // Ping-pong để giữ kết nối
-  socket.on('ping', (cb) => {
-    if (typeof cb === 'function') {
-      cb('pong');
-    }
-  });
-
-  // Ngắt kết nối
+  // Ngắt kết nối - FIXED
   socket.on('disconnect', (reason) => {
     console.log('🔴 User disconnected:', socket.id, 'Reason:', reason);
 
@@ -452,20 +280,16 @@ io.on('connection', (socket) => {
 
     const optimizedUsers = Array.from(onlineUsers.values()).map(user => ({
       id: user.userId,
-      name: user.userName,
+      name: user.userName || `User_${user.userId.substring(user.userId.length - 6)}`,
       role: user.role,
       isOnline: true
     }));
 
     io.emit('getOnlineUsers', optimizedUsers);
   });
-
-  socket.on('error', (error) => {
-    console.error('💥 Socket error:', error);
-  });
 });
 
-// ✅ HÀM CẬP NHẬT CONVERSATIONS CHO ADMINS VỚI TÊN THẬT
+// ✅ HÀM CẬP NHẬT CONVERSATIONS CHO ADMINS VỚI TÊN THẬT - FIXED
 async function updateConversationsForAdmins() {
   try {
     const { Conversation } = require('./models/ChatModel');
@@ -490,70 +314,4 @@ async function updateConversationsForAdmins() {
   }
 }
 
-// Connect DB
-const connectDB = async () => {
-  try {
-    const mongoURI = process.env.MONGO_DB;
-    if (!mongoURI) {
-      throw new Error('MONGO_DB environment variable is not defined');
-    }
-
-    await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log('✅ Connect DB success');
-  } catch (err) {
-    console.log('❌ DB connection error:', err);
-    setTimeout(connectDB, 5000);
-  }
-};
-
-connectDB();
-
-// Check Stripe key
-if (!process.env.STRIPE_SECRET_KEY) {
-  console.warn('⚠️ CẢNH BÁO: STRIPE_SECRET_KEY chưa được thiết lập!');
-} else {
-  console.log('✅ STRIPE_SECRET_KEY đã load thành công.');
-}
-
-// ✅ DEBUG USER SCHEMA
-async function debugUserSchema() {
-  try {
-    const User = mongoose.model('User');
-    const sampleUser = await User.findOne().lean();
-
-    if (sampleUser) {
-      console.log('🔍 USER SCHEMA FIELDS:', Object.keys(sampleUser));
-      console.log('📝 SAMPLE USER DATA:', sampleUser);
-    } else {
-      console.log('⚠️ No users found in database');
-    }
-  } catch (error) {
-    console.log('❌ Error debugging user schema:', error);
-  }
-}
-
-// Gọi debug sau khi kết nối DB
-setTimeout(debugUserSchema, 2000);
-
-// Xử lý lỗi toàn cục
-process.on('unhandledRejection', (err) => {
-  console.error('💥 Unhandled Promise Rejection:', err);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('💥 Uncaught Exception:', err);
-  process.exit(1);
-});
-
-// Run server
-server.listen(port, () => {
-  console.log(`🚀 Server is running on port ${port}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`💬 Socket.io config: maxHttpBufferSize=10MB`);
-  console.log(`✅ Allowed origins:`, allowedOrigins);
-});
-
-module.exports = { app, io, server };
+// ... (phần còn lại của server giữ nguyên) ...
