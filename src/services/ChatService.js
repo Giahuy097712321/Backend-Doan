@@ -4,6 +4,7 @@ const User = require('../models/UserModel');
 
 const ChatService = {
     // services/ChatService.js - kiểm tra phần saveMessage
+    // services/ChatService.js - SỬA PHẦN saveMessage
     saveMessage: async (messageData) => {
         try {
             console.log('💾 Saving message:', messageData);
@@ -18,25 +19,25 @@ const ChatService = {
             const savedMessage = await message.save();
             console.log('✅ Message saved to DB:', savedMessage._id);
 
-            // Xử lý conversation - QUAN TRỌNG: cả user và admin đều cập nhật
-            let userName = messageData.senderName;
+            // ✅ FIX: LUÔN CẬP NHẬT TÊN THẬT KHI CÓ TIN NHẮN MỚI
+            if (messageData.receiverId === 'admin' && messageData.senderId !== 'admin') {
+                let realUserName = 'Khách hàng';
 
-            // Nếu là user gửi cho admin
-            if (messageData.receiverId === 'admin') {
-                if (!userName && messageData.senderId !== 'admin') {
-                    try {
-                        const user = await User.findById(messageData.senderId);
-                        userName = user ? (user.name || user.email || 'Khách hàng') : 'Khách hàng';
-                    } catch (error) {
-                        userName = 'Khách hàng';
+                try {
+                    const User = mongoose.model('User');
+                    const user = await User.findById(messageData.senderId);
+                    if (user) {
+                        realUserName = user.name || user.username || user.email?.split('@')[0] || `User_${messageData.senderId.substring(messageData.senderId.length - 6)}`;
                     }
+                } catch (error) {
+                    console.log('❌ Error getting user info:', error);
                 }
 
                 await Conversation.findOneAndUpdate(
                     { userId: messageData.senderId },
                     {
                         userId: messageData.senderId,
-                        userName: userName,
+                        userName: realUserName, // ✅ LUÔN DÙNG TÊN THẬT
                         lastMessage: messageData.message,
                         lastMessageTime: messageData.timestamp || new Date(),
                         $inc: { unreadCount: 1 },
@@ -45,7 +46,7 @@ const ChatService = {
                     { upsert: true, new: true }
                 );
 
-                console.log('📝 Conversation updated for user:', messageData.senderId, 'Name:', userName);
+                console.log('📝 Conversation updated with real name:', realUserName);
             }
 
             return savedMessage;
