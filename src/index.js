@@ -189,39 +189,54 @@ async function getRealUserName(userId) {
 
     const User = mongoose.model('User');
 
-    // ✅ FIX: Xử lý cả ObjectId và string ID
-    let user;
-    if (mongoose.Types.ObjectId.isValid(userIdStr)) {
-      // Nếu là ObjectId hợp lệ
-      user = await User.findById(userIdStr).lean();
-    } else {
-      // Nếu không phải ObjectId, tìm theo các trường khác
-      user = await User.findOne({
+    // ✅ FIX: XỬ LÝ ĐẶC BIỆT CHO test-user VÀ CÁC ID KHÔNG PHẢI OBJECTID
+    if (userIdStr === 'test-user' || !mongoose.Types.ObjectId.isValid(userIdStr)) {
+      console.log(`🔄 Handling non-ObjectId user: ${userIdStr}`);
+
+      // Tìm user theo username, email, hoặc các trường khác
+      const user = await User.findOne({
         $or: [
-          { _id: userIdStr },
+          { username: userIdStr },
           { email: userIdStr },
-          { username: userIdStr }
+          { displayName: userIdStr },
+          { fullName: userIdStr }
         ]
       }).lean();
+
+      if (user) {
+        const realName = user.fullName || user.name || user.username || user.displayName ||
+          user.email?.split('@')[0] || `User_${userIdStr.substring(0, 8)}`;
+        console.log(`✅ Found non-ObjectId user ${userIdStr}: ${realName}`);
+        return realName;
+      } else {
+        console.log(`❌ Non-ObjectId user not found: ${userIdStr}`);
+        return `User_${userIdStr.substring(0, 8)}`;
+      }
+    }
+
+    // ✅ XỬ LÝ OBJECTID HỢP LỆ
+    let user;
+    try {
+      user = await User.findById(userIdStr).lean();
+    } catch (dbError) {
+      console.log(`❌ Database error for ${userIdStr}:`, dbError.message);
+      return `User_${userIdStr.substring(userIdStr.length - 6)}`;
     }
 
     if (!user) {
-      console.log(`❌ User not found: ${userIdStr}`);
-      // ✅ FIX: Kiểm tra độ dài trước khi dùng substring
-      return userIdStr.length >= 6 ? `User_${userIdStr.substring(userIdStr.length - 6)}` : `User_${userIdStr}`;
+      console.log(`❌ User not found in database: ${userIdStr}`);
+      return `User_${userIdStr.substring(userIdStr.length - 6)}`;
     }
 
-    // ✅ THỬ CÁC TRƯỜNG TÊN KHÁC NHAU
+    // ✅ THỬ CÁC TRƯỜNG TÊN KHÁC NHAU - ƯU TIÊN THEO THỨ TỰ
     const realName =
-      user.fullName ||
-      user.name ||
-      user.username ||
-      user.displayName ||
-      user.firstName ||
-      user.lastName ||
-      (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : null) ||
+      user.fullName?.trim() ||
+      user.name?.trim() ||
+      user.displayName?.trim() ||
+      user.username?.trim() ||
+      (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}`.trim() : null) ||
       user.email?.split('@')[0] ||
-      (userIdStr.length >= 6 ? `User_${userIdStr.substring(userIdStr.length - 6)}` : `User_${userIdStr}`);
+      `User_${userIdStr.substring(userIdStr.length - 6)}`;
 
     console.log(`✅ Found real name for ${userIdStr}: ${realName}`);
     return realName;
@@ -229,9 +244,9 @@ async function getRealUserName(userId) {
   } catch (error) {
     console.log(`❌ Error getting user name for ${userId}:`, error.message);
 
-    // ✅ FIX: Xử lý lỗi an toàn
+    // ✅ FIX: Xử lý lỗi an toàn - không dùng substring nếu có lỗi
     try {
-      const userIdStr = String(userId || '');
+      const userIdStr = String(userId || 'unknown');
       return userIdStr.length >= 6 ? `User_${userIdStr.substring(userIdStr.length - 6)}` : `User_${userIdStr}`;
     } catch {
       return 'Người dùng';
@@ -239,13 +254,31 @@ async function getRealUserName(userId) {
   }
 }
 
+
 // ✅ HÀM TỐI ƯU HÓA CONVERSATIONS VỚI TÊN THẬT - FIXED
 async function optimizeConversationsWithRealNames(conversations) {
   try {
     console.log('🔄 Optimizing conversations with real names...');
 
+    // ✅ FIX: LOẠI BỎ CONVERSATIONS TRÙNG LẶP TRƯỚC KHI XỬ LÝ
+    const uniqueConversations = conversations.reduce((acc, current) => {
+      const existing = acc.find(item => item.userId?.toString() === current.userId?.toString());
+      if (!existing) {
+        acc.push(current);
+      } else {
+        // Ưu tiên conversation có lastMessageTime mới hơn
+        if (new Date(current.lastMessageTime || 0) > new Date(existing.lastMessageTime || 0)) {
+          const index = acc.indexOf(existing);
+          acc[index] = current;
+        }
+      }
+      return acc;
+    }, []);
+
+    console.log(`📊 After deduplication: ${uniqueConversations.length} conversations`);
+
     const optimizedConversations = await Promise.all(
-      conversations.map(async (conv) => {
+      uniqueConversations.map(async (conv) => {
         try {
           // ✅ FIX: Đảm bảo userId là string
           const userId = String(conv.userId || '').trim();
@@ -297,7 +330,19 @@ async function optimizeConversationsWithRealNames(conversations) {
       })
     );
 
+    // ✅ SẮP XẾP THEO THỜI GIAN TIN NHẮN MỚI NHẤT
+    optimizedConversations.sort((a, b) => {
+      return new Date(b.lastMessageTime || 0) - new Date(a.lastMessageTime || 0);
+    });
+
     console.log('✅ Optimized conversations:', optimizedConversations.length);
+
+    // ✅ LOG KẾT QUẢ CUỐI CÙNG
+    console.log('🎯 FINAL CONVERSATIONS:');
+    optimizedConversations.forEach((conv, index) => {
+      console.log(`  ${index + 1}. ${conv.userId} -> "${conv.userName}" (${conv.unreadCount} unread)`);
+    });
+
     return optimizedConversations;
 
   } catch (error) {
