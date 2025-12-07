@@ -1,111 +1,142 @@
-const User = require("../models/UserModel")
-const bcrypt = require("bcrypt")
-const { genneralAccessToken, genneralRefreshToken } = require("./JwtService")
-const EmailService = require("./EmailService")
-
-// Thêm hàm tạo OTP
-const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
+const User = require("../models/UserModel");
+const bcrypt = require("bcrypt");
+const JwtService = require("./JwtService");
+const EmailService = require("./EmailService");
 
 const createUser = (newUser) => {
     return new Promise(async (resolve, reject) => {
-        const { name, email, password, confirmPassword, phone } = newUser
+        const { name, email, password, confirmPassword, phone } = newUser;
+
         try {
-            const checkUser = await User.findOne({
-                email: email
-            })
-            if (checkUser !== null) {
+            // Kiểm tra email đã tồn tại
+            const checkUser = await User.findOne({ email });
+            if (checkUser) {
                 resolve({
                     status: 'ERR',
-                    message: 'The email is already'
-                })
+                    message: 'Email đã tồn tại'
+                });
+                return;
             }
-            const hash = bcrypt.hashSync(password, 10)
 
+            // Hash password
+            const hash = bcrypt.hashSync(password, 10);
+
+            // Tạo user
             const createdUser = await User.create({
                 name,
                 email,
                 password: hash,
-                phone
-            })
-            if (createdUser) {
-                resolve({
-                    status: 'OK',
-                    message: 'SUCCESS',
-                    data: createdUser
-                })
-            }
-        } catch (e) {
-            reject(e)
+                phone,
+                isAdmin: false
+            });
+
+            // Không trả password
+            const userData = createdUser.toObject();
+            delete userData.password;
+
+            resolve({
+                status: 'OK',
+                message: 'Đăng ký thành công',
+                data: userData
+            });
+
+        } catch (error) {
+            console.error('❌ Lỗi tạo user:', error);
+            reject(error);
         }
-    })
-}
+    });
+};
 
 const loginUser = (userLogin) => {
     return new Promise(async (resolve, reject) => {
-        const { email, password } = userLogin
+        const { email, password } = userLogin;
+
         try {
-            const checkUser = await User.findOne({
-                email: email
-            })
-            if (checkUser == null) {
+            // Tìm user
+            const user = await User.findOne({ email });
+
+            if (!user) {
                 resolve({
                     status: 'ERR',
-                    message: 'The email is not defined'
-                })
+                    message: 'Email hoặc mật khẩu không đúng'
+                });
+                return;
             }
-            const comparePassword = bcrypt.compareSync(password, checkUser.password)
 
+            // So sánh password
+            const comparePassword = bcrypt.compareSync(password, user.password);
             if (!comparePassword) {
                 resolve({
                     status: 'ERR',
-                    message: 'The password or user is incorrect'
-                })
+                    message: 'Email hoặc mật khẩu không đúng'
+                });
+                return;
             }
-            const access_token = await genneralAccessToken({
-                id: checkUser.id,
-                isAdmin: checkUser.isAdmin
-            })
-            const refresh_token = await genneralRefreshToken({
-                id: checkUser.id,
-                isAdmin: checkUser.isAdmin
-            })
+
+            // Tạo tokens
+            const access_token = await JwtService.generateAccessToken({
+                id: user._id,
+                isAdmin: user.isAdmin
+            });
+
+            const refresh_token = await JwtService.generateRefreshToken({
+                id: user._id,
+                isAdmin: user.isAdmin
+            });
+
+            // Không trả password
+            const userData = user.toObject();
+            delete userData.password;
+
             resolve({
                 status: 'OK',
-                message: 'SUCCESS',
-                access_token, refresh_token
-            })
+                message: 'Đăng nhập thành công',
+                access_token,
+                refresh_token,
+                user: userData
+            });
 
-        } catch (e) {
-            reject(e)
+        } catch (error) {
+            console.error('❌ Lỗi đăng nhập:', error);
+            reject(error);
         }
-    })
-}
+    });
+};
 
+// Các hàm khác giữ nguyên nhưng sửa import JwtService
 const updateUser = (id, data) => {
     return new Promise(async (resolve, reject) => {
         try {
-            const checkUser = await User.findById(id)
-            if (checkUser === null) {
+            const user = await User.findById(id);
+            if (!user) {
                 resolve({
                     status: 'ERR',
-                    message: 'The user is not defined'
-                })
+                    message: 'User không tồn tại'
+                });
+                return;
             }
-            const updateUser = await User.findByIdAndUpdate(id, data, { new: true })
+
+            // Nếu có password mới thì hash
+            if (data.password) {
+                data.password = bcrypt.hashSync(data.password, 10);
+            }
+
+            const updatedUser = await User.findByIdAndUpdate(id, data, {
+                new: true
+            });
+
             resolve({
                 status: 'OK',
-                message: 'SUCCESS',
-                data: updateUser
-            })
+                message: 'Cập nhật thành công',
+                data: updatedUser
+            });
 
-        } catch (e) {
-            reject(e)
+        } catch (error) {
+            console.error('❌ Lỗi update user:', error);
+            reject(error);
         }
-    })
-}
-
+    });
+};
 const deleteUser = (id, data) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -312,5 +343,9 @@ module.exports = {
     deleteManyUser,
     changePassword,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    // Tương thích với code cũ
+    genneralAccessToken: JwtService.genneralAccessToken,
+    genneralRefreshToken: JwtService.genneralRefreshToken,
+    refreshTokenJwtService: JwtService.refreshTokenJwtService
 }
