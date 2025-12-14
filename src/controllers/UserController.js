@@ -119,7 +119,7 @@ const deleteManyUser = async (req, res) => {
             });
         }
 
-        const response = await UserService.deleteMany(ids);
+        const response = await UserService.deleteManyUser(ids);
         return res.status(200).json(response);
     } catch (e) {
         return res.status(404).json({
