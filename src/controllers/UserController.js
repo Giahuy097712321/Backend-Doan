@@ -282,8 +282,85 @@ const resetPassword = async (req, res) => {
     }
 }
 
+// Addresses controller
+const addAddress = async (req, res) => {
+    try {
+        const userId = req.params.id
+        const data = req.body
+        if (!userId) {
+            return res.status(200).json({ status: 'ERR', message: 'User id is required' })
+        }
+        const result = await UserService.addAddress(userId, data)
+        return res.status(200).json(result)
+    } catch (e) {
+        return res.status(404).json({ message: e })
+    }
+}
+
+const updateAddress = async (req, res) => {
+    try {
+        const userId = req.params.id
+        const addressId = req.params.addressId
+        const data = req.body
+        if (!userId || !addressId) {
+            return res.status(200).json({ status: 'ERR', message: 'User id and address id are required' })
+        }
+        const result = await UserService.updateAddress(userId, addressId, data)
+        return res.status(200).json(result)
+    } catch (e) {
+        return res.status(404).json({ message: e })
+    }
+}
+
+const deleteAddress = async (req, res) => {
+    try {
+        const userId = req.params.id
+        const addressId = req.params.addressId
+        console.log('🗑️ deleteAddress called', { method: req.method, url: req.originalUrl, userId, addressId, token: req.headers.token })
+        if (!userId || !addressId) {
+            return res.status(200).json({ status: 'ERR', message: 'User id and address id are required' })
+        }
+        const result = await UserService.deleteAddress(userId, addressId)
+        return res.status(200).json(result)
+    } catch (e) {
+        console.error('❌ Error in deleteAddress:', e)
+        return res.status(404).json({ message: e })
+    }
+}
+
+const setDefaultAddress = async (req, res) => {
+    try {
+        const userId = req.params.id
+        const addressId = req.params.addressId
+        console.log('⭐ setDefaultAddress called', { method: req.method, url: req.originalUrl, userId, addressId, token: req.headers.token })
+        if (!userId || !addressId) {
+            return res.status(200).json({ status: 'ERR', message: 'User id and address id are required' })
+        }
+        const result = await UserService.setDefaultAddress(userId, addressId)
+        return res.status(200).json(result)
+    } catch (e) {
+        console.error('❌ Error in setDefaultAddress:', e)
+        return res.status(404).json({ message: e })
+    }
+}
+
+const getAddresses = async (req, res) => {
+    try {
+        const userId = req.params.id
+        if (!userId) {
+            return res.status(200).json({ status: 'ERR', message: 'User id is required' })
+        }
+        const result = await UserService.getAddresses(userId)
+        return res.status(200).json(result)
+    } catch (e) {
+        return res.status(404).json({ message: e })
+    }
+}
+
 module.exports = {
     deleteManyUser, createUser, loginUser, updateUser, deleteUser,
     getAllUser, getDetailsUser, refreshToken, logoutUser,
-    changePassword, forgotPassword, resetPassword
+    changePassword, forgotPassword, resetPassword,
+    // addresses
+    addAddress, updateAddress, deleteAddress, setDefaultAddress, getAddresses
 }

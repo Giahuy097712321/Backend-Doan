@@ -185,6 +185,136 @@ const getDetailsUser = (id) => {
     })
 }
 
+// Address management for users
+const addAddress = (userId, addressData) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const user = await User.findById(userId)
+            if (!user) {
+                resolve({ status: 'ERR', message: 'User not found' })
+                return
+            }
+
+            // If new address is set as default, unset other defaults
+            if (addressData.isDefault) {
+                user.addresses.forEach(addr => (addr.isDefault = false))
+            }
+
+            user.addresses.push(addressData)
+            await user.save()
+
+            resolve({ status: 'OK', message: 'Address added', data: user.addresses })
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+const updateAddress = (userId, addressId, data) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const user = await User.findById(userId)
+            if (!user) {
+                resolve({ status: 'ERR', message: 'User not found' })
+                return
+            }
+
+            const address = user.addresses.id(addressId)
+            if (!address) {
+                resolve({ status: 'ERR', message: 'Address not found' })
+                return
+            }
+
+            // If updating to default, unset others
+            if (data.isDefault) {
+                user.addresses.forEach(addr => (addr.isDefault = false))
+            }
+
+            address.set(data)
+            await user.save()
+
+            resolve({ status: 'OK', message: 'Address updated', data: user.addresses })
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+const deleteAddress = (userId, addressId) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const user = await User.findById(userId)
+            if (!user) {
+                resolve({ status: 'ERR', message: 'User not found' })
+                return
+            }
+
+            const address = user.addresses.id(addressId)
+            if (!address) {
+                resolve({ status: 'ERR', message: 'Address not found' })
+                return
+            }
+
+            const wasDefault = !!address.isDefault
+            // Remove by filtering to avoid calling remove() on non-subdocument objects
+            user.addresses = user.addresses.filter(a => String(a._id) !== String(addressId))
+
+            // If removed address was default and there are other addresses, set first one as default
+            if (wasDefault && user.addresses.length > 0) {
+                user.addresses[0].isDefault = true
+            }
+
+            await user.save()
+
+            resolve({ status: 'OK', message: 'Address deleted', data: user.addresses })
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+const setDefaultAddress = (userId, addressId) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const user = await User.findById(userId)
+            if (!user) {
+                resolve({ status: 'ERR', message: 'User not found' })
+                return
+            }
+
+            const address = user.addresses.id(addressId)
+            if (!address) {
+                resolve({ status: 'ERR', message: 'Address not found' })
+                return
+            }
+
+            user.addresses.forEach(addr => (addr.isDefault = false))
+            address.isDefault = true
+            await user.save()
+
+            resolve({ status: 'OK', message: 'Default address set', data: user.addresses })
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+const getAddresses = (userId) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const user = await User.findById(userId)
+            if (!user) {
+                resolve({ status: 'ERR', message: 'User not found' })
+                return
+            }
+
+            resolve({ status: 'OK', message: 'Addresses fetched', data: user.addresses })
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
 // Thêm hàm đổi mật khẩu
 const changePassword = (userId, oldPassword, newPassword) => {
     return new Promise(async (resolve, reject) => {
@@ -312,5 +442,11 @@ module.exports = {
     deleteManyUser,
     changePassword,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    // Address methods
+    addAddress,
+    updateAddress,
+    deleteAddress,
+    setDefaultAddress,
+    getAddresses
 }

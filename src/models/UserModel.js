@@ -5,7 +5,19 @@ const userSchema = new mongoose.Schema(
         email: { type: String, required: true, unique: true },
         password: { type: String, required: true },
         isAdmin: { type: Boolean, default: false, required: true },
-        phone: { type: Number },
+        // Store phone as string so it can start with 0
+        phone: { type: String },
+        // Support multiple shipping addresses
+        addresses: [
+            {
+                name: { type: String },
+                phone: { type: String },
+                address: { type: String },
+                city: { type: String },
+                isDefault: { type: Boolean, default: false }
+            }
+        ],
+        // Keep single address field for backward compatibility
         address: { type: String },
         avatar: { type: String },
         city: { type: String },

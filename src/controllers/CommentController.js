@@ -1,52 +1,54 @@
 // src/controllers/CommentController.js
 const CommentService = require('../services/CommentService');
+const mongoose = require('mongoose');
 
+const User = require('../models/UserModel'); // ✅ THÊM DÒNG NÀY
+const Order = require('../models/OrderProduct');
 const CommentController = {
     // Thêm bình luận
+    // src/controllers/CommentController.js - Sửa hàm addComment
+    // src/controllers/CommentController.js - Sửa phần addComment
     addComment: async (req, res) => {
         try {
-            console.log('📝 Add comment called - Full user object:', req.user);
-            console.log('📝 Request params:', req.params);
+            console.log('📝 [addComment] Called');
+            console.log('👤 User from request:', req.user);
+            console.log('📦 Request params:', req.params);
             console.log('📝 Request body:', req.body);
 
             const { productId } = req.params;
             const { rating, comment, images } = req.body;
             const userId = req.user.id;
 
-            // FIX: Lấy userName từ nhiều nguồn khác nhau
-            let userName = req.user.name || req.user.userName || req.user.email || 'Người dùng';
+            // Lấy thông tin user
+            const user = await User.findById(userId).select('name avatar email');
 
-            // Nếu vẫn không có, tạo tên mặc định từ email
-            if (userName === 'Người dùng' && req.user.email) {
-                userName = req.user.email.split('@')[0]; // Lấy phần trước @ của email
-            }
-
-            console.log('👤 Resolved user name:', userName);
-
-            if (!rating || !comment) {
+            if (!user) {
                 return res.status(400).json({
                     status: 'ERR',
-                    message: 'Vui lòng nhập đầy đủ thông tin'
+                    message: 'Không tìm thấy thông tin người dùng'
                 });
             }
 
+            // Sử dụng thông tin từ database
+            let userName = user.name || user.email?.split('@')[0] || 'Người dùng';
+            let userAvatar = user.avatar || '';
+
             const commentData = {
-                userId,
+                userId: userId,
                 userName: userName,
-                userAvatar: req.user.avatar || '',
-                rating,
-                comment,
+                userAvatar: userAvatar,
+                rating: parseInt(rating),
+                comment: comment.trim(),
                 images: images || []
             };
-
-            console.log('💬 Final comment data:', commentData);
 
             const result = await CommentService.addComment(productId, commentData);
 
             res.status(200).json(result);
         } catch (error) {
             console.error('❌ Error in addComment:', error);
-            res.status(500).json({
+            // Trả về message lỗi từ service
+            res.status(400).json({
                 status: 'ERR',
                 message: error.message || 'Lỗi server'
             });

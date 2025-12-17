@@ -107,21 +107,23 @@ const getDetailsOrder = async (req, res) => {
 const cancelOrder = async (req, res) => {
     try {
         const orderId = req.params.id;
-        const data = req.body;
+        const token = req.headers.token; // Chỉ cần token
+
         if (!orderId) {
             return res.status(400).json({
                 status: 'ERR',
-                message: 'Thiếu ID đơn hàng',
+                message: 'Thiếu orderId'
             });
         }
 
-        const response = await OrderService.cancelOrder(orderId, data);
+        // Gọi service chỉ với id và token
+        const response = await OrderService.cancelOrder(orderId, token);
         return res.status(200).json(response);
     } catch (e) {
-        console.error('Error in cancelOrder:', e);
+        console.error('❌ Lỗi controller cancelOrder:', e);
         return res.status(500).json({
             status: 'ERR',
-            message: e.message || 'Internal Server Error',
+            message: e.message || 'Lỗi server'
         });
     }
 };
@@ -179,8 +181,30 @@ const updateOrder = async (req, res) => {
         });
     }
 };
+const reorder = async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        const token = req.headers?.token?.split(' ')[1] || req.headers?.authorization?.split(' ')[1];
+
+        if (!orderId) {
+            return res.status(400).json({
+                status: 'ERR',
+                message: 'Thiếu orderId'
+            });
+        }
+
+        const response = await OrderService.reorder(orderId, token);
+        return res.status(200).json(response);
+    } catch (error) {
+        console.error('Lỗi controller reorder:', error);
+        return res.status(500).json({
+            status: 'ERR',
+            message: error.message || 'Lỗi server'
+        });
+    }
+};
 
 module.exports = {
     createOrder, getAllOrderDetails,
-    getDetailsOrder, cancelOrder, payOrder, getAllOrder, updateOrder
+    getDetailsOrder, cancelOrder, payOrder, getAllOrder, updateOrder, reorder
 }

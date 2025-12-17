@@ -15,5 +15,12 @@ router.post('/delete-many', authMiddleWare, userController.deleteManyUser)
 router.put('/change-password/:id', authUserMiddleWare, userController.changePassword)
 router.post('/forgot-password', userController.forgotPassword)
 router.post('/reset-password', userController.resetPassword)
-//hihi
+
+// Address management
+router.get('/:id/addresses', authUserMiddleWare, userController.getAddresses)
+router.post('/:id/addresses', authUserMiddleWare, userController.addAddress)
+router.put('/:id/addresses/:addressId', authUserMiddleWare, userController.updateAddress)
+router.delete('/:id/addresses/:addressId', authUserMiddleWare, userController.deleteAddress)
+router.patch('/:id/addresses/:addressId/default', authUserMiddleWare, userController.setDefaultAddress)
+
 module.exports = router

@@ -11,4 +11,5 @@ router.delete('/cancel-order/:id', authUserMiddleWare, OrderController.cancelOrd
 router.post('/:id/pay', authUserMiddleWare, OrderController.payOrder);
 router.get('/get-all-order', authMiddleWare, OrderController.getAllOrder);
 router.put('/update/:id', authMiddleWare, OrderController.updateOrder);
+router.post('/reorder/:id', authUserMiddleWare, OrderController.reorder);
 module.exports = router

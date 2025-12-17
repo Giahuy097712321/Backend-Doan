@@ -1,3 +1,4 @@
+// models/OrderProduct.js
 const mongoose = require("mongoose")
 
 const orderSchema = new mongoose.Schema({
@@ -11,7 +12,7 @@ const orderSchema = new mongoose.Schema({
                 ref: 'Product',
                 required: true,
             },
-            price: { type: Number, required: true }, // ✅ nếu bạn đang dùng giá từng sản phẩm
+            price: { type: Number, required: true },
             discount: { type: Number, default: 0 },
         },
     ],
@@ -29,11 +30,32 @@ const orderSchema = new mongoose.Schema({
     taxPrice: { type: Number, required: true },
     totalPrice: { type: Number, required: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    email: { type: String, required: true },
+    discount: { type: Number, default: 0 },
+
+    // Trạng thái giao hàng
+    deliveryStatus: {
+        type: String,
+        enum: ['pending', 'processing', 'shipping', 'delivered', 'cancelled'],
+        default: 'pending'
+    },
+
+    // Trạng thái thanh toán
+    paymentStatus: {
+        type: String,
+        enum: ['unpaid', 'paid', 'partial', 'refunded'],
+        default: 'unpaid'
+    },
+
+    // Các trường cũ (giữ để tương thích)
     isPaid: { type: Boolean, default: false },
-    paidAt: { type: Date },
     isDelivered: { type: Boolean, default: false },
-    deliveredAt: { type: Date },
     isCancelled: { type: Boolean, default: false },
+
+    // Thời gian
+    paidAt: { type: Date },
+    deliveredAt: { type: Date },
+    cancelledAt: { type: Date },
 },
     {
         timestamps: true,
